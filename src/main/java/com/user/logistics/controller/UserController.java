@@ -529,4 +529,49 @@ public class UserController {
         return ResponseEntity.ok("New OTP has been sent to email/phone.");
     }
 
+    @PostMapping("/update-password")
+    public ResponseEntity<?> updatePassword(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        String oldPassword = request.get("oldPassword");
+        String newPassword = request.get("newPassword");
+        String confirmPassword = request.get("confirmPassword");
+
+        // Basic validations
+        if (email == null || email.isEmpty()) {
+            return ResponseEntity.badRequest().body("Email is required.");
+        }
+        if (oldPassword == null || oldPassword.isEmpty()) {
+            return ResponseEntity.badRequest().body("Old password is required.");
+        }
+        if (newPassword == null || newPassword.isEmpty()) {
+            return ResponseEntity.badRequest().body("New password is required.");
+        }
+        if (confirmPassword == null || confirmPassword.isEmpty()) {
+            return ResponseEntity.badRequest().body("Confirm password is required.");
+        }
+
+        if (!newPassword.equals(confirmPassword)) {
+            return ResponseEntity.badRequest().body("New password and confirm password do not match.");
+        }
+
+        // Fetch user by email
+        Optional<User> userOptional = userService.findByEmail(email);
+        if (userOptional.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found.");
+        }
+
+        User user = userOptional.get();
+
+        // Check old password match
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Old password is incorrect.");
+        }
+
+        // Update new password
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userService.save(user);
+
+        return ResponseEntity.ok("Password updated successfully.");
+    }
+
 }
