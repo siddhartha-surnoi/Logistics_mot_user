@@ -322,4 +322,13 @@ public boolean existsByPhoneNumber(String phoneNumber) {
             return userRepository.findByPhoneNumber(emailOrPhone).orElse(null);
         }
     }
+
+    public Optional<User> findByEmail(String email) {
+        return userRepository.findByEmail(email);
+    }
+
+    public void save(User user) {
+        userRepository.save(user);
+    }
+
 }
