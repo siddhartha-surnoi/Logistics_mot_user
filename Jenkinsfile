@@ -174,7 +174,7 @@ pipeline {
         }
 
         always {
-            echo "🕒 Build completed at: ${new Date()}"
+            echo " Build completed at: ${new Date()}"
         }
     }
 }
