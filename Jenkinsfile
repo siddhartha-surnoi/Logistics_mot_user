@@ -61,7 +61,7 @@ pipeline {
         }
 
         // ==========================================================
-        // OWASP Dependency Check (Optional)
+        // Optional: OWASP Dependency Check
         // ==========================================================
         // stage('OWASP Dependency Scan') {
         //     steps {
@@ -77,30 +77,36 @@ pipeline {
         // }
 
         // ==========================================================
-        // SonarQube Analysis (Optional)
+        // Optional: SonarQube Analysis
         // ==========================================================
         // stage('SonarQube Analysis') {
         //     steps {
         //         echo "🔍 Running SonarQube code analysis..."
         //         withSonarQubeEnv("${SONARQUBE_ENV}") {
-        //             sh '''
-        //                 ./mvnw verify sonar:sonar -DskipTests
-        //             '''
+        //             sh './mvnw verify sonar:sonar -DskipTests'
         //         }
         //     }
         // }
 
         // ==========================================================
-        // Docker Build & Push to ECR (Optional)
+        // Docker Build & Push to ECR
         // ==========================================================
         stage('Build & Push Docker Image') {
             steps {
-                echo " Building and pushing Docker image to ECR..."
-                sh '''
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                    docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                    docker push ${ECR_REPO}:${IMAGE_TAG}
-                '''
+                script {
+                    // Check Docker permission before running
+                    def dockerCheck = sh(script: "docker info > /dev/null 2>&1 && echo 'ok' || echo 'fail'", returnStdout: true).trim()
+                    if (dockerCheck != 'ok') {
+                        error "🚫 Docker is not accessible on this agent. Please ensure Docker is installed and Jenkins user has permissions."
+                    }
+                    echo "✅ Docker is accessible. Proceeding..."
+
+                    sh '''
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                        docker push ${ECR_REPO}:${IMAGE_TAG}
+                    '''
+                }
             }
         }
 
@@ -135,7 +141,7 @@ pipeline {
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "----------------------------------------------------------"
                 echo "📜 Error Description (last 30 lines of Maven log):"
-                sh "tail -n 30 ${MAVEN_LOG} || echo 'No Maven log found.'"
+                sh "test -f ${MAVEN_LOG} && tail -n 30 ${MAVEN_LOG} || echo 'No Maven log found.'"
                 echo "----------------------------------------------------------"
                 echo "🔗 Build Log URL: ${env.BUILD_URL}"
                 echo "==========================================================="
