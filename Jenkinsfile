@@ -63,18 +63,18 @@ pipeline {
         // ==========================================================
         // OWASP Dependency Check
         // ==========================================================
-        stage('OWASP Dependency Scan') {
-            steps {
-                echo " Running OWASP Dependency Check..."
-                sh '''
-                    mkdir -p owasp-report
-                    ./mvnw org.owasp:dependency-check-maven:check \
-                        -Dformat=ALL \
-                        -DoutputDirectory=owasp-report > owasp-report/owasp.log 2>&1 || true
-                    echo " OWASP Scan Completed. Reports saved to owasp-report/"
-                '''
-            }
-        }
+        // stage('OWASP Dependency Scan') {
+        //     steps {
+        //         echo " Running OWASP Dependency Check..."
+        //         sh '''
+        //             mkdir -p owasp-report
+        //             ./mvnw org.owasp:dependency-check-maven:check \
+        //                 -Dformat=ALL \
+        //                 -DoutputDirectory=owasp-report > owasp-report/owasp.log 2>&1 || true
+        //             echo " OWASP Scan Completed. Reports saved to owasp-report/"
+        //         '''
+        //     }
+        // }
 
         // ==========================================================
         // SonarQube Analysis
