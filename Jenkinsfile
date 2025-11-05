@@ -46,7 +46,7 @@ pipeline {
                 sh '''
                     mkdir -p target
                     chmod +x mvnw || true
-                    ./mvnw clean package -DskipTests > ${MAVEN_LOG} 2>&1 || (echo "❌ Maven Build Failed" && exit 1)
+                    ./mvnw clean packag -DskipTests > ${MAVEN_LOG} 2>&1 || (echo "❌ Maven Build Failed" && exit 1)
                 '''
             }
         }
