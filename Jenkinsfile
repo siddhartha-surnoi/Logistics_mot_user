@@ -28,7 +28,7 @@ pipeline {
             echo "Build finished for branch: ${env.BRANCH_NAME}"
         }
         success {
-            echo "✅ Build successful!"
+            echo " Build successful!"
         }
         failure {
             echo " Build failed!"
