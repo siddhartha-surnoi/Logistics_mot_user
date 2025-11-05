@@ -66,7 +66,6 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 script {
-                    // Check Docker permission using sudo
                     def dockerCheck = sh(script: "sudo docker info > /dev/null 2>&1 && echo 'ok' || echo 'fail'", returnStdout: true).trim()
                     if (dockerCheck != 'ok') {
                         error "🚫 Docker is not accessible on this agent even with sudo. Please ensure Docker is installed and Jenkins user has sudo privileges."
@@ -82,11 +81,43 @@ pipeline {
             }
         }
 
+        // ==========================================================
+        // ECR Image Scan Stage
+        // ==========================================================
+        stage('ECR Image Scan') {
+            steps {
+                script {
+                    echo "🔍 Starting ECR scan for image: ${IMAGE_TAG}"
+
+                    // Trigger the scan
+                    sh """
+                        aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --region ${AWS_REGION}
+                    """
+
+                    // Poll for scan completion
+                    def scanStatus = sh(script: """
+                        status=""
+                        while [ "\$status" != "COMPLETE" ] && [ "\$status" != "FAILED" ]; do
+                            status=\$(aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --query 'imageScanStatus.status' --output text --region ${AWS_REGION})
+                            echo "Current scan status: \$status"
+                            [ "\$status" != "COMPLETE" ] && [ "\$status" != "FAILED" ] && sleep 5
+                        done
+                        echo \$status
+                    """, returnStdout: true).trim()
+
+                    if (scanStatus == "FAILED") {
+                        error "🚨 ECR image scan failed for ${IMAGE_TAG}"
+                    } else {
+                        echo "✅ ECR image scan completed successfully!"
+                        echo "📄 Fetching scan findings..."
+                        sh "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --region ${AWS_REGION} --output table"
+                    }
+                }
+            }
+        }
+
     }
 
-    // ==========================================================
-    // Post Actions
-    // ==========================================================
     post {
         success {
             script {
