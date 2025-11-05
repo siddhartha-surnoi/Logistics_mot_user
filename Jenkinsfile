@@ -6,7 +6,7 @@ pipeline {
         SONARQUBE_ENV = "sonarqube" // Jenkins SonarQube Server Name (configure in Jenkins > Manage Jenkins > SonarQube)
         AWS_REGION = "ap-south-1"
       //  ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
-        IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
+        // IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
     }
 
     stages {
