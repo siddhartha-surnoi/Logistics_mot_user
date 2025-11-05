@@ -6,13 +6,16 @@ pipeline {
             steps {
                 script {
                     echo "========================================"
-                    echo "📡 Checking Webhook Trigger Source"
+                    echo " Checking Webhook Trigger Source"
 
-                    // Jenkins sets this environment variable when triggered via webhook
-                    if (env.GITHUB_TRIGGER || currentBuild.rawBuild.getCause(hudson.triggers.SCMTrigger$SCMTriggerCause)) {
+                    // Safe method to get build trigger causes (works in sandbox)
+                    def buildCauses = currentBuild.getBuildCauses()
+
+                    if (buildCauses.any { it._class?.contains("SCMTriggerCause") || it.shortDescription?.toLowerCase()?.contains("github") }) {
                         echo " Build triggered by GitHub Webhook (HTTP 200 OK received)"
-                    } else if (currentBuild.rawBuild.getCause(hudson.model.Cause$UserIdCause)) {
-                        echo " Build triggered manually by user: ${currentBuild.rawBuild.getCause(hudson.model.Cause$UserIdCause).getUserName()}"
+                    } else if (buildCauses.any { it._class?.contains("UserIdCause") }) {
+                        def user = buildCauses.find { it._class?.contains("UserIdCause") }?.userName ?: "unknown"
+                        echo " Build triggered manually by user: ${user}"
                     } else {
                         echo " Build triggered by another source (e.g. timer, API call)"
                     }
@@ -23,7 +26,7 @@ pipeline {
                     def commitDate = sh(script: "git log -1 --pretty=format:'%ci'", returnStdout: true).trim()
 
                     echo "========================================"
-                    echo "📡 Webhook Trigger Details"
+                    echo " Webhook Trigger Details"
                     echo "Triggered at: ${new Date()}"
                     echo "Branch: ${env.BRANCH_NAME}"
                     echo "Commit ID: ${env.GIT_COMMIT}"
