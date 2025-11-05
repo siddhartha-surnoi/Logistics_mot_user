@@ -1,11 +1,9 @@
 pipeline {
-    agent java-agent-1
-
+    agent { label 'java-agent-1' }
 
     stages {
         stage('Clone Repository') {
             steps {
-                // Jenkins automatically checks out the branch in multibranch mode
                 echo "Branch being built: ${env.BRANCH_NAME}"
                 sh 'git status'
             }
@@ -14,21 +12,26 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Building application on branch: ${env.BRANCH_NAME}"
-                sh './mvnw clean package -DskipTests' // or your build command
+                sh '''
+                    # Ensure mvnw script is executable
+                    chmod +x mvnw
+                    
+                    # Run Maven build
+                    ./mvnw clean package -DskipTests
+                '''
             }
         }
+    }
 
-     
-
-           post {
+    post {
         always {
             echo "Build finished for branch: ${env.BRANCH_NAME}"
         }
         success {
-            echo "Build successful ✅"
+            echo "✅ Build successful!"
         }
         failure {
-            echo "Build failed ❌"
+            echo "❌ Build failed!"
         }
     }
 }
