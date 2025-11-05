@@ -5,12 +5,19 @@ pipeline {
         stage('Webhook Info') {
             steps {
                 script {
+                    // Fetch details from the latest commit
+                    def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
+                    def commitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
+                    def commitDate = sh(script: "git log -1 --pretty=format:'%ci'", returnStdout: true).trim()
+
                     echo "========================================"
                     echo "📡 Webhook Trigger Details"
                     echo "Triggered at: ${new Date()}"
                     echo "Branch: ${env.BRANCH_NAME}"
                     echo "Commit ID: ${env.GIT_COMMIT}"
-                    sh 'echo "Commit Message: $(git log -1 --pretty=%B)"'
+                    echo " Commit Author: ${commitAuthor}"
+                    echo " Commit Date: ${commitDate}"
+                    echo " Commit Message: ${commitMessage}"
                     echo "========================================"
                 }
             }
@@ -25,10 +32,10 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo "Building application on branch: ${env.BRANCH_NAME}"
+                echo " Building application on branch: ${env.BRANCH_NAME}"
                 sh '''
                     chmod +x mvnw
-                    ./mvnw clean packag -DskipTests
+                    ./mvnw clean package -DskipTests
                 '''
             }
         }
@@ -42,18 +49,25 @@ pipeline {
             echo "========================================"
         }
         success {
-            echo "✅ Build successful for commit ${env.GIT_COMMIT}"
+            script {
+                def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
+                echo " Build successful for commit ${env.GIT_COMMIT} by ${commitAuthor}"
+            }
         }
         failure {
-            echo "❌ Build failed for branch: ${env.BRANCH_NAME}"
-            echo "📜 Error Details Below:"
-            echo "----------------------------------------"
-            sh '''
-                echo "🔍 Showing last 50 lines of Maven log:"
-                tail -n 50 target/*.log || echo "No detailed Maven logs found."
-            '''
-            echo "----------------------------------------"
-            echo "Please check the full build log at: ${env.BUILD_URL}"
+            script {
+                def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
+                echo " Build failed for branch: ${env.BRANCH_NAME}"
+                echo " Commit Author: ${commitAuthor}"
+                echo " Error Details Below:"
+                echo "----------------------------------------"
+                sh '''
+                    echo " Showing last 50 lines of Maven log:"
+                    tail -n 50 target/*.log || echo "No detailed Maven logs found."
+                '''
+                echo "----------------------------------------"
+                echo "Please check the full build log at: ${env.BUILD_URL}"
+            }
         }
     }
 }
