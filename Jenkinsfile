@@ -61,7 +61,7 @@ pipeline {
         }
 
         // ==========================================================
-        // OWASP Dependency Check
+        // OWASP Dependency Check (Optional)
         // ==========================================================
         // stage('OWASP Dependency Scan') {
         //     steps {
@@ -90,9 +90,9 @@ pipeline {
         //     }
         // }
 
-        ==========================================================
-        Docker Build & Push to ECR (Optional)
-        ==========================================================
+        // ==========================================================
+        // Docker Build & Push to ECR (Optional)
+        // ==========================================================
         stage('Build & Push Docker Image') {
             steps {
                 echo " Building and pushing Docker image to ECR..."
