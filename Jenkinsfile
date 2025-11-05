@@ -5,8 +5,8 @@ pipeline {
         MAVEN_LOG = "target/maven-build.log"
         SONARQUBE_ENV = "sonarqube" // Jenkins SonarQube Server Name
         AWS_REGION = "ap-south-1"
-        // ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
-        // IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
+        ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
+        IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
     }
 
     stages {
@@ -63,18 +63,18 @@ pipeline {
         // ==========================================================
         // OWASP Dependency Check
         // ==========================================================
-        stage('OWASP Dependency Scan') {
-            steps {
-                echo " Running OWASP Dependency Check..."
-                sh '''
-                    mkdir -p owasp-report
-                    ./mvnw org.owasp:dependency-check-maven:check \
-                        -Dformat=ALL \
-                        -DoutputDirectory=owasp-report > owasp-report/owasp.log 2>&1 || true
-                    echo " OWASP Scan Completed. Reports saved to owasp-report/"
-                '''
-            }
-        }
+        // stage('OWASP Dependency Scan') {
+        //     steps {
+        //         echo " Running OWASP Dependency Check..."
+        //         sh '''
+        //             mkdir -p owasp-report
+        //             ./mvnw org.owasp:dependency-check-maven:check \
+        //                 -Dformat=ALL \
+        //                 -DoutputDirectory=owasp-report > owasp-report/owasp.log 2>&1 || true
+        //             echo " OWASP Scan Completed. Reports saved to owasp-report/"
+        //         '''
+        //     }
+        // }
 
         // ==========================================================
         // SonarQube Analysis (Optional)
@@ -90,19 +90,19 @@ pipeline {
         //     }
         // }
 
-        // ==========================================================
-        // Docker Build & Push to ECR (Optional)
-        // ==========================================================
-        // stage('Build & Push Docker Image') {
-        //     steps {
-        //         echo " Building and pushing Docker image to ECR..."
-        //         sh '''
-        //             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-        //             docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-        //             docker push ${ECR_REPO}:${IMAGE_TAG}
-        //         '''
-        //     }
-        // }
+        ==========================================================
+        Docker Build & Push to ECR (Optional)
+        ==========================================================
+        stage('Build & Push Docker Image') {
+            steps {
+                echo " Building and pushing Docker image to ECR..."
+                sh '''
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                    docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                    docker push ${ECR_REPO}:${IMAGE_TAG}
+                '''
+            }
+        }
 
     }
 
