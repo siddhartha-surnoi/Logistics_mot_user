@@ -61,51 +61,23 @@ pipeline {
         }
 
         // ==========================================================
-        // Optional: OWASP Dependency Check
-        // ==========================================================
-        // stage('OWASP Dependency Scan') {
-        //     steps {
-        //         echo " Running OWASP Dependency Check..."
-        //         sh '''
-        //             mkdir -p owasp-report
-        //             ./mvnw org.owasp:dependency-check-maven:check \
-        //                 -Dformat=ALL \
-        //                 -DoutputDirectory=owasp-report > owasp-report/owasp.log 2>&1 || true
-        //             echo " OWASP Scan Completed. Reports saved to owasp-report/"
-        //         '''
-        //     }
-        // }
-
-        // ==========================================================
-        // Optional: SonarQube Analysis
-        // ==========================================================
-        // stage('SonarQube Analysis') {
-        //     steps {
-        //         echo "🔍 Running SonarQube code analysis..."
-        //         withSonarQubeEnv("${SONARQUBE_ENV}") {
-        //             sh './mvnw verify sonar:sonar -DskipTests'
-        //         }
-        //     }
-        // }
-
-        // ==========================================================
-        // Docker Build & Push to ECR
+        // Docker Build & Push to ECR using sudo
         // ==========================================================
         stage('Build & Push Docker Image') {
             steps {
                 script {
-                    // Check Docker permission before running
-                    def dockerCheck = sh(script: "docker info > /dev/null 2>&1 && echo 'ok' || echo 'fail'", returnStdout: true).trim()
+                    // Check Docker permission using sudo
+                    def dockerCheck = sh(script: "sudo docker info > /dev/null 2>&1 && echo 'ok' || echo 'fail'", returnStdout: true).trim()
                     if (dockerCheck != 'ok') {
-                        error "🚫 Docker is not accessible on this agent. Please ensure Docker is installed and Jenkins user has permissions."
+                        error "🚫 Docker is not accessible on this agent even with sudo. Please ensure Docker is installed and Jenkins user has sudo privileges."
                     }
-                    echo "✅ Docker is accessible. Proceeding..."
+                    echo "✅ Docker is accessible via sudo. Proceeding..."
 
-                    sh '''
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                        docker push ${ECR_REPO}:${IMAGE_TAG}
-                    '''
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REPO}
+                        sudo docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                        sudo docker push ${ECR_REPO}:${IMAGE_TAG}
+                    """
                 }
             }
         }
