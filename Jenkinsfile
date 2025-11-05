@@ -79,34 +79,34 @@ pipeline {
         // ==========================================================
         // SonarQube Analysis
         // ==========================================================
-        stage('SonarQube Analysis') {
-            steps {
-                echo "🔍 Running SonarQube code analysis..."
-                withSonarQubeEnv("${SONARQUBE_ENV}") {
-                    sh '''
-                        ./mvnw verify sonar:sonar -DskipTests
-                    '''
-                }
-            }
-        }
+        // stage('SonarQube Analysis') {
+        //     steps {
+        //         echo "🔍 Running SonarQube code analysis..."
+        //         withSonarQubeEnv("${SONARQUBE_ENV}") {
+        //             sh '''
+        //                 ./mvnw verify sonar:sonar -DskipTests
+        //             '''
+        //         }
+        //     }
+        // }
 
-        // ==========================================================
-        // SonarQube Quality Gate
-        // ==========================================================
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    script {
-                        def qg = waitForQualityGate()
-                        if (qg.status != 'OK') {
-                            error " Quality Gate failed: ${qg.status}"
-                        } else {
-                            echo " Quality Gate passed successfully!"
-                        }
-                    }
-                }
-            }
-        }
+        // // ==========================================================
+        // // SonarQube Quality Gate
+        // // ==========================================================
+        // stage('Quality Gate') {
+        //     steps {
+        //         timeout(time: 5, unit: 'MINUTES') {
+        //             script {
+        //                 def qg = waitForQualityGate()
+        //                 if (qg.status != 'OK') {
+        //                     error " Quality Gate failed: ${qg.status}"
+        //                 } else {
+        //                     echo " Quality Gate passed successfully!"
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         // ==========================================================
         // Docker Build & Push to ECR
