@@ -85,38 +85,64 @@ pipeline {
         // ECR Image Scan Stage
         // ==========================================================
         stage('ECR Image Scan') {
-            steps {
-                script {
-                    echo "🔍 Starting ECR scan for image: ${IMAGE_TAG}"
+    steps {
+        script {
+            echo "🔍 Starting ECR scan for image: ${IMAGE_TAG}"
 
-                    // Trigger the scan
-                    sh """
-                        aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --region ${AWS_REGION}
-                    """
+            // Start the image scan
+            sh """
+                aws ecr start-image-scan \
+                    --repository-name logistics/logisticsmotuser \
+                    --image-id imageTag=${IMAGE_TAG} \
+                    --region ${AWS_REGION}
+            """
 
-                    // Poll for scan completion
-                    def scanStatus = sh(script: """
-                        status=""
-                        while [ "\$status" != "COMPLETE" ] && [ "\$status" != "FAILED" ]; do
-                            status=\$(aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --query 'imageScanStatus.status' --output text --region ${AWS_REGION})
-                            echo "Current scan status: \$status"
-                            [ "\$status" != "COMPLETE" ] && [ "\$status" != "FAILED" ] && sleep 5
-                        done
-                        echo \$status
-                    """, returnStdout: true).trim()
+            echo "⏳ Waiting for ECR scan to complete..."
 
-                    if (scanStatus == "FAILED") {
-                        error "🚨 ECR image scan failed for ${IMAGE_TAG}"
-                    } else {
-                        echo "✅ ECR image scan completed successfully!"
-                        echo "📄 Fetching scan findings..."
-                        sh "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --region ${AWS_REGION} --output table"
+            // Poll the scan status
+            def maxRetries = 30 // Maximum retries (~5 minutes if sleep=10s)
+            def retry = 0
+            def status = ""
+            while (status != "COMPLETE" && status != "FAILED") {
+                status = sh(
+                    script: """
+                        aws ecr describe-image-scan-findings \
+                            --repository-name logistics/logisticsmotuser \
+                            --image-id imageTag=${IMAGE_TAG} \
+                            --query 'imageScanStatus.status' \
+                            --output text \
+                            --region ${AWS_REGION} || echo "PENDING"
+                    """,
+                    returnStdout: true
+                ).trim()
+
+                echo "Current ECR scan status: ${status}"
+
+                if (status == "PENDING" || status == "") {
+                    sleep 10
+                    retry++
+                    if (retry >= maxRetries) {
+                        error "❌ ECR scan did not complete after $((maxRetries*10)) seconds."
                     }
                 }
             }
-        }
 
+            if (status == "FAILED") {
+                error "❌ ECR scan failed for image: ${IMAGE_TAG}"
+            }
+
+            // Fetch and show scan findings summary
+            echo "✅ ECR scan completed. Showing findings summary:"
+            sh """
+                aws ecr describe-image-scan-findings \
+                    --repository-name logistics/logisticsmotuser \
+                    --image-id imageTag=${IMAGE_TAG} \
+                    --region ${AWS_REGION} \
+                    --query 'imageScanFindings.findingSeverityCounts'
+            """
+        }
     }
+}
 
     post {
         success {
