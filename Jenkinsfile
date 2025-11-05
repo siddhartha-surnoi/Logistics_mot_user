@@ -5,7 +5,7 @@ pipeline {
         MAVEN_LOG = "target/maven-build.log"
         SONARQUBE_ENV = "sonarqube" // Jenkins SonarQube Server Name (configure in Jenkins > Manage Jenkins > SonarQube)
         AWS_REGION = "ap-south-1"
-        ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
+      //  ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
         IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
     }
 
@@ -59,21 +59,21 @@ pipeline {
                 '''
             }
         }
-        // ==========================================================
-        // OWASP Dependency Check
-        // ==========================================================
-        // stage('OWASP Dependency Scan') {
-        //     steps {
-        //         echo " Running OWASP Dependency Check..."
-        //         sh '''
-        //             mkdir -p owasp-report
-        //             ./mvnw org.owasp:dependency-check-maven:check \
-        //                 -Dformat=ALL \
-        //                 -DoutputDirectory=owasp-report > owasp-report/owasp.log 2>&1 || true
-        //             echo " OWASP Scan Completed. Reports saved to owasp-report/"
-        //         '''
-        //     }
-        // }
+        ==========================================================
+        OWASP Dependency Check
+        ==========================================================
+        stage('OWASP Dependency Scan') {
+            steps {
+                echo " Running OWASP Dependency Check..."
+                sh '''
+                    mkdir -p owasp-report
+                    ./mvnw org.owasp:dependency-check-maven:check \
+                        -Dformat=ALL \
+                        -DoutputDirectory=owasp-report > owasp-report/owasp.log 2>&1 || true
+                    echo " OWASP Scan Completed. Reports saved to owasp-report/"
+                '''
+            }
+        }
 
         // ==========================================================
         // SonarQube Analysis
@@ -110,31 +110,31 @@ pipeline {
         // ==========================================================
         // Docker Build & Push to ECR
         // ==========================================================
-        stage('Build & Push Docker Image') {
-            steps {
-                echo " Building and pushing Docker image to ECR..."
-                sh '''
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                    docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                    docker push ${ECR_REPO}:${IMAGE_TAG}
-                '''
-            }
-        }
+        // stage('Build & Push Docker Image') {
+        //     steps {
+        //         echo " Building and pushing Docker image to ECR..."
+        //         sh '''
+        //             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+        //             docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+        //             docker push ${ECR_REPO}:${IMAGE_TAG}
+        //         '''
+        //     }
+        // }
 
         // ==========================================================
         // Deploy Application Container
         // ==========================================================
-        stage('Deploy Container') {
-            steps {
-                echo "🚀 Deploying container..."
-                sh '''
-                    docker rm -f logistics-app || true
-                    docker run -d --name logistics-app -p 8080:8080 ${ECR_REPO}:${IMAGE_TAG}
-                    echo "✅ Application deployed successfully on port 8080"
-                '''
-            }
-        }
-    }
+    //     stage('Deploy Container') {
+    //         steps {
+    //             echo "🚀 Deploying container..."
+    //             sh '''
+    //                 docker rm -f logistics-app || true
+    //                 docker run -d --name logistics-app -p 8080:8080 ${ECR_REPO}:${IMAGE_TAG}
+    //                 echo "✅ Application deployed successfully on port 8080"
+    //             '''
+    //         }
+    //     }
+    // }
 
     // ==========================================================
     // Post Actions (Success / Failure / Always)
