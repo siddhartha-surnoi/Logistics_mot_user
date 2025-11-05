@@ -5,6 +5,18 @@ pipeline {
         stage('Webhook Info') {
             steps {
                 script {
+                    echo "========================================"
+                    echo "📡 Checking Webhook Trigger Source"
+
+                    // Jenkins sets this environment variable when triggered via webhook
+                    if (env.GITHUB_TRIGGER || currentBuild.rawBuild.getCause(hudson.triggers.SCMTrigger$SCMTriggerCause)) {
+                        echo " Build triggered by GitHub Webhook (HTTP 200 OK received)"
+                    } else if (currentBuild.rawBuild.getCause(hudson.model.Cause$UserIdCause)) {
+                        echo " Build triggered manually by user: ${currentBuild.rawBuild.getCause(hudson.model.Cause$UserIdCause).getUserName()}"
+                    } else {
+                        echo " Build triggered by another source (e.g. timer, API call)"
+                    }
+
                     // Fetch details from the latest commit
                     def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
                     def commitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
