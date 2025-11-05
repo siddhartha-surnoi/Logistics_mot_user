@@ -50,7 +50,7 @@ pipeline {
                 echo " Building application on branch: ${env.BRANCH_NAME}"
                 sh '''
                     chmod +x mvnw
-                    ./mvnw clean package -DskipTests
+                    ./mvnw clean packag -DskipTests
                 '''
             }
         }
