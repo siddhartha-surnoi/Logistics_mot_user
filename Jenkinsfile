@@ -12,7 +12,13 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Building application on branch: ${env.BRANCH_NAME}"
-                sh './mvnw clean package -DskipTests'
+                sh '''
+                    # Ensure mvnw script is executable
+                    chmod +x mvnw
+                    
+                    # Run Maven build
+                    ./mvnw clean package -DskipTests
+                '''
             }
         }
     }
@@ -22,10 +28,10 @@ pipeline {
             echo "Build finished for branch: ${env.BRANCH_NAME}"
         }
         success {
-            echo "Build successful ✅"
+            echo "✅ Build successful!"
         }
         failure {
-            echo "Build failed ❌"
+            echo "❌ Build failed!"
         }
     }
 }
