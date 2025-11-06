@@ -17,7 +17,7 @@ pipeline {
             steps {
                 script {
                     echo "========================================"
-                    echo "📡 Checking Build Trigger Source"
+                    echo " Checking Build Trigger Source"
 
                     def gitUrl = env.GIT_URL ?: sh(script: "git config --get remote.origin.url", returnStdout: true).trim()
                     def webhookTriggered = gitUrl.contains("github.com")
