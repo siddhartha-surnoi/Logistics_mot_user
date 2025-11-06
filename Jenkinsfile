@@ -46,7 +46,9 @@ pipeline {
                 }
             }
         }
-
+         // ================================================
+        // Security Scan (OWASP)
+        // ================================================
         stage('Security Scan (OWASP)') {
           steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
           post {
@@ -93,24 +95,19 @@ pipeline {
         // ================================================
         // SonarQube Scan
         // ================================================
-        stage('SonarQube Scan') {
-            environment { scannerHome = tool 'sonar-7.2' }
-            steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    withSonarQubeEnv('SonarQube-Server') {
-                        sh """
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.login=$SONAR_TOKEN \
-                              -Dsonar.projectKey=logistics-user \
-                              -Dsonar.projectName="Logistics MOT User" \
-                              -Dsonar.java.binaries=target/classes \
-                              -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
-                        """
-                    }
-                }
+      stage('SonarQube Scan') {
+    environment { scannerHome = tool 'sonar-7.2' }
+    steps {
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            withSonarQubeEnv('SonarQube-Server') {
+                sh """
+                    ${scannerHome}/bin/sonar-scanner \
+                      -Dsonar.login=$SONAR_TOKEN
+                """
             }
         }
-
+    }
+}
         // ================================================
         // Quality Gate Check
         // ================================================
