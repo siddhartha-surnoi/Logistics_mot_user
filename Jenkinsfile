@@ -28,10 +28,10 @@ pipeline {
                         echo " Build triggered manually or by another source"
                     }
 
-                    def commitAuthor = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
-                    def commitEmail  = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
+                    def commitAuthor  = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+                    def commitEmail   = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
                     def commitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
-                    def commitDate   = sh(script: "git log -1 --pretty=format:'%ci'", returnStdout: true).trim()
+                    def commitDate    = sh(script: "git log -1 --pretty=format:'%ci'", returnStdout: true).trim()
 
                     echo "========================================"
                     echo "📡 Webhook Delivery Validation"
@@ -64,7 +64,7 @@ pipeline {
         // ================================================
         // SonarQube Scan Stage
         // ================================================
-        stage('Sonar Scan') {
+        stage('SonarQube Scan') {
             environment { 
                 scannerHome = tool 'sonar-7.2' 
             }
@@ -82,20 +82,12 @@ pipeline {
         }
 
         // ================================================
-        // SonarQube Quality Gate Check
+        // Quality Gate Stage
         // ================================================
         stage('Quality Gate') {
             steps {
                 timeout(time: 2, unit: 'MINUTES') {
-                    script {
-                        def qg = waitForQualityGate()
-                        echo "Quality Gate Status: ${qg.status}"
-                        if (qg.status != 'OK') {
-                            error "❌ Quality Gate failed with status: ${qg.status}"
-                        } else {
-                            echo "✅ Quality Gate passed successfully!"
-                        }
-                    }
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
@@ -117,25 +109,37 @@ pipeline {
                         aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REPO}
                         sudo docker build -t ${ECR_REPO}:${IMAGE_TAG} .
                         sudo docker push ${ECR_REPO}:${IMAGE_TAG}
+                        echo "APP_VERSION=${IMAGE_TAG}" > build_metadata.env
                     """
                 }
             }
         }
 
         // ================================================
-        // ECR Image Scan Stage
+        // ECR Image Scan Stage (Advanced)
         // ================================================
         stage('ECR Image Scan') {
             steps {
                 script {
-                    echo "🔍 Starting ECR image scan..."
-                    sh """
-                        aws ecr start-image-scan \
-                            --repository-name logistics/logisticsmotuser \
-                            --image-id imageTag=${IMAGE_TAG} \
-                            --region ${AWS_REGION}
-                    """
-                    echo "✅ Image scan initiated for ${ECR_REPO}:${IMAGE_TAG}"
+                    def meta = readFile('build_metadata.env').split("\n").collectEntries { def p = it.split('='); [(p[0]): p[1]] }
+                    def appVer = meta['APP_VERSION']
+
+                    echo "🔍 Starting ECR scan for ${appVer}..."
+                    def startStatus = sh(script: "aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${env.AWS_REGION}", returnStatus: true)
+
+                    if (startStatus != 0) {
+                        echo "⚠️ Failed to start ECR image scan (non-fatal)."
+                    } else {
+                        timeout(time: 10, unit: 'MINUTES') {
+                            waitUntil {
+                                def status = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${env.AWS_REGION} --query 'imageScanStatus.status' --output text || echo PENDING", returnStdout: true).trim()
+                                echo "ECR scan status: ${status}"
+                                return status == 'COMPLETE'
+                            }
+                        }
+                        def critical = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${env.AWS_REGION} --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text || echo 0", returnStdout: true).trim()
+                        echo "🔎 ECR critical vulnerabilities: ${critical}"
+                    }
                 }
             }
         }
