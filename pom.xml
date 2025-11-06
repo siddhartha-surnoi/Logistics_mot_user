@@ -25,7 +25,9 @@
     <owasp.version>9.2.0</owasp.version>
   </properties>
 
+  <!-- ======================== -->
   <!-- Dependencies -->
+  <!-- ======================== -->
   <dependencies>
     <!-- Spring Boot core modules -->
     <dependency>
@@ -50,6 +52,13 @@
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
+    </dependency>
+
+    <!-- H2 DB for local developer/testing -->
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
     </dependency>
 
     <!-- Utility libraries -->
@@ -106,7 +115,9 @@
     </dependency>
   </dependencies>
 
+  <!-- ======================== -->
   <!-- Spring Cloud BOM -->
+  <!-- ======================== -->
   <dependencyManagement>
     <dependencies>
       <dependency>
@@ -119,6 +130,9 @@
     </dependencies>
   </dependencyManagement>
 
+  <!-- ======================== -->
+  <!-- Plugins -->
+  <!-- ======================== -->
   <build>
     <plugins>
 
@@ -128,7 +142,17 @@
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
 
-      <!-- JUnit + Jacoco coverage -->
+      <!-- Surefire Plugin -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration>
+          <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+        </configuration>
+      </plugin>
+
+      <!-- Jacoco Code Coverage -->
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
@@ -170,34 +194,30 @@
         </executions>
       </plugin>
 
-      <!-- Surefire reports -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
-        <configuration>
-          <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
-        </configuration>
-      </plugin>
-
     </plugins>
   </build>
 
-  <!-- Developer & DevOps profiles -->
+  <!-- ======================== -->
+  <!-- Profiles -->
+  <!-- ======================== -->
   <profiles>
+    <!-- Developer profile -->
     <profile>
       <id>developer</id>
       <activation>
         <activeByDefault>true</activeByDefault>
       </activation>
       <properties>
+        <spring.profiles.active>dev</spring.profiles.active>
         <skipTests>false</skipTests>
       </properties>
     </profile>
 
+    <!-- DevOps / CI profile -->
     <profile>
       <id>devops</id>
       <properties>
+        <spring.profiles.active>ci</spring.profiles.active>
         <skipTests>true</skipTests>
       </properties>
     </profile>
