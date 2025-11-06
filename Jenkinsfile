@@ -25,7 +25,7 @@ pipeline {
                     if (webhookTriggered) {
                         echo " Build triggered by GitHub Webhook (HTTP 200 OK received)"
                     } else {
-                        echo "⚙️ Build triggered manually or by another source"
+                        echo " Build triggered manually or by another source"
                     }
 
                     def commitAuthor = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
