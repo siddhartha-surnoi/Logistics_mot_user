@@ -65,11 +65,11 @@ pipeline {
        stage('Build') {
     steps {
         
-        sh """
-            chmod +x mvnw || true
-            mkdir -p target
-            ./mvnw clean install -Pdeveloper -Dmaven.test.failure.ignore=true | tee ${MAVEN_LOG}
-        """
+sh """
+    mkdir -p target
+    ./mvnw clean compile -Pdeveloper | tee ${MAVEN_LOG}
+"""
+
     }
 }
 
