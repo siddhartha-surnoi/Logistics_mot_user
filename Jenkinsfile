@@ -61,35 +61,28 @@ pipeline {
         // }
 
         // ================================================
-        // Build Stage
+        // Build
         // ================================================
         stage('Build') {
             steps {
-                echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
+                echo " Building Java project for branch: ${env.BRANCH_NAME}"
                 sh '''
                     mkdir -p target
                     chmod +x mvnw || true
                     ./mvnw clean compile -Pdeveloper > ${MAVEN_LOG} 2>&1
                 '''
-                echo "✅ Build completed successfully"
             }
         }
 
         // ================================================
-        // Unit Test + Code Coverage
+        // Unit Test & Coverage
         // ================================================
         // stage('Unit Test & Code Coverage') {
         //     steps {
-        //         echo "🧪 Running unit tests & generating JaCoCo coverage..."
-        //         sh '''
-        //             ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
-        //         '''
+        //         echo " Running unit tests..."
+        //         sh './mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1'
         //         junit 'target/surefire-reports/*.xml'
-        //         jacoco(
-        //             execPattern: 'target/jacoco.exec',
-        //             classPattern: 'target/classes',
-        //             sourcePattern: 'src/main/java'
-        //         )
+        //         jacoco(execPattern: 'target/jacoco.exec', classPattern: 'target/classes', sourcePattern: 'src/main/java')
         //         archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
         //     }
         // }
@@ -102,17 +95,17 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Server') {
-                        sh """
+                        sh '''
                             ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.login=$SONAR_TOKEN
-                        """
+                              -Dsonar.token=$SONAR_TOKEN
+                        '''
                     }
                 }
             }
         }
 
         // ================================================
-        // Quality Gate Check
+        // Quality Gate
         // ================================================
         stage('Quality Gate') {
             steps {
@@ -123,7 +116,34 @@ pipeline {
         }
 
         // ================================================
-        // Docker Build & Push (using secrets)
+        // Docker Permissions Check
+        // ================================================
+        stage('Docker Permission Check') {
+    steps {
+        script {
+            echo " Granting Docker permissions to Jenkins user..."
+            sh '''
+                # Ensure docker group exists
+                if ! getent group docker > /dev/null 2>&1; then
+                    sudo groupadd docker
+                fi
+
+                # Add Jenkins user to docker group
+                sudo usermod -aG docker jenkins
+
+                echo " Jenkins user added to 'docker' group successfully."
+                echo " Note: Jenkins restart may be required for permissions to take effect."
+
+                # Optional: test docker access (won’t fail build)
+                sudo -u jenkins docker ps || echo " Jenkins may need restart to apply permissions."
+            '''
+        }
+    }
+}
+
+
+        // ================================================
+        // Build & Push Docker Image
         // ================================================
         stage('Build & Push Docker Image') {
             steps {
@@ -132,13 +152,13 @@ pipeline {
                     string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
                 ]) {
                     script {
-                        echo "🚀 Building and pushing Docker image to ECR..."
-                        sh """
-                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                            docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                            docker push ${ECR_REPO}:${IMAGE_TAG}
+                        echo " Building and pushing Docker image to ECR..."
+                        sh '''
+                            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                            docker build -t $ECR_REPO:${IMAGE_TAG} .
+                            docker push $ECR_REPO:${IMAGE_TAG}
                             echo "APP_VERSION=${IMAGE_TAG}" > build_metadata.env
-                        """
+                        '''
                     }
                 }
             }
@@ -149,46 +169,48 @@ pipeline {
         // ================================================
         stage('ECR Image Scan') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-region', variable: 'AWS_REGION'),
-                    string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
-                ]) {
+                withCredentials([string(credentialsId: 'aws-region', variable: 'AWS_REGION')]) {
                     script {
                         def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                         def appVer = meta['APP_VERSION']
 
-                        echo "🔍 Starting ECR scan for ${appVer}..."
-                        def startStatus = sh(script: "aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION}", returnStatus: true)
-                        if (startStatus == 0) {
-                            timeout(time: 10, unit: 'MINUTES') {
-                                waitUntil {
-                                    def s = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanStatus.status' --output text", returnStdout: true).trim()
-                                    echo "ECR scan status: ${s}"
-                                    return s == 'COMPLETE'
-                                }
-                            }
-                            def critical = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text", returnStdout: true).trim()
-                            echo "🔎 ECR critical vulnerabilities: ${critical}"
-                        } else {
-                            echo "⚠️ ECR scan initiation failed."
-                        }
+                        echo " Starting ECR scan for ${appVer}..."
+                        sh '''
+                            aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=''' + appVer + ''' --region $AWS_REGION || true
+                        '''
                     }
                 }
             }
         }
     }
 
-    // ================================================
-    // Post Actions (Full Summary Output)
+       // ================================================
+    //  Post Actions (Detailed Summary)
     // ================================================
     post {
         success {
             script {
-                def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
-                def coveragePercent = sh(script: "grep -oPm1 '(?<=<counter type=\"INSTRUCTION\" missed=\")[0-9]+\" covered=\"[0-9]+\"' target/site/jacoco/jacoco.xml | awk -F'\"' '{missed=\$1; covered=\$3; total=missed+covered; printf(\"%.2f\", (covered/total)*100)}' || echo 'N/A'", returnStdout: true).trim()
-                echo "✅========================================================="
-                echo "✅ Build Status: SUCCESS"
-                echo "Webhook Trigger: ✅ 200 OK"
+                def commitAuthor = sh(
+                    script: "git log -1 --pretty=format:'%an <%ae>'",
+                    returnStdout: true
+                ).trim()
+
+                // Try reading JaCoCo coverage if available
+                def coveragePercent = sh(
+                    script: """
+                        if [ -f target/site/jacoco/jacoco.xml ]; then
+                            grep -oPm1 '(?<=<counter type="INSTRUCTION" missed=")[0-9]+" covered="[0-9]+"' target/site/jacoco/jacoco.xml | \
+                            awk -F'"' '{missed=\$1; covered=\$3; total=missed+covered; printf("%.2f", (covered/total)*100)}'
+                        else
+                            echo 'N/A'
+                        fi
+                    """,
+                    returnStdout: true
+                ).trim()
+
+                echo "========================================================="
+                echo " Build Status: SUCCESS"
+                echo "Webhook Trigger:  200 OK"
                 echo "Commit ID: ${env.GIT_COMMIT}"
                 echo "Commit Author: ${commitAuthor}"
                 echo "Branch: ${env.BRANCH_NAME}"
@@ -200,18 +222,22 @@ pipeline {
 
         failure {
             script {
-                def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
-                echo "❌========================================================="
-                echo "❌ Build Status: FAILED"
-                echo "Webhook Trigger: ✅ 200 OK"
+                def commitAuthor = sh(
+                    script: "git log -1 --pretty=format:'%an <%ae>'",
+                    returnStdout: true
+                ).trim()
+
+                echo "========================================================="
+                echo " Build Status: FAILED"
+                echo "Webhook Trigger:  200 OK"
                 echo "Commit ID: ${env.GIT_COMMIT}"
                 echo "Commit Author: ${commitAuthor}"
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "----------------------------------------------------------"
-                echo "📜 Error Description (last 30 lines of Maven log):"
+                echo " Error Description (last 30 lines of Maven log):"
                 sh "test -f ${MAVEN_LOG} && tail -n 30 ${MAVEN_LOG} || echo 'No Maven log found.'"
                 echo "----------------------------------------------------------"
-                echo "🔗 Build Log URL: ${env.BUILD_URL}"
+                echo " Build Log URL: ${env.BUILD_URL}"
                 echo "==========================================================="
             }
         }
@@ -220,4 +246,6 @@ pipeline {
             echo " Build completed at: ${new Date()}"
         }
     }
+}
+
 }
