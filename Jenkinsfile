@@ -71,9 +71,30 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Server') {
-                        sh """${scannerHome}/bin/sonar-scanner \
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
                             -Dsonar.login=$SONAR_TOKEN \
-                            -Dproject.settings=sonar-project.properties"""
+                            -Dproject.settings=sonar-project.properties
+                        """
+                    }
+                }
+            }
+        }
+
+        // ================================================
+        // SonarQube Quality Gate Check
+        // ================================================
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 2, unit: 'MINUTES') {
+                    script {
+                        def qg = waitForQualityGate()
+                        echo "Quality Gate Status: ${qg.status}"
+                        if (qg.status != 'OK') {
+                            error "❌ Quality Gate failed with status: ${qg.status}"
+                        } else {
+                            echo "✅ Quality Gate passed successfully!"
+                        }
                     }
                 }
             }
