@@ -90,28 +90,37 @@ pipeline {
         // ================================================
         // Docker Permissions Check
         // ================================================
-        stage('Docker Permission Check') {
-            steps {
-                script {
-                    echo " Granting Docker permissions to Jenkins user..."
-                    sh '''
-                        # Ensure docker group exists
-                        if ! getent group docker > /dev/null 2>&1; then
-                            sudo groupadd docker
-                        fi
+      stage('Docker Permission Check') {
+    steps {
+        script {
+            echo "Granting Docker permissions to Jenkins user (if possible)..."
+            sh '''
+                # Get the current user running the pipeline
+                JENKINS_USER=$(whoami)
 
-                        # Add Jenkins user to docker group
-                        sudo usermod -aG docker jenkins
+                # Check if docker group exists
+                if ! getent group docker > /dev/null 2>&1; then
+                    sudo groupadd docker
+                    echo "Docker group created."
+                else
+                    echo "Docker group already exists."
+                fi
 
-                        echo " Jenkins user added to 'docker' group successfully."
-                        echo " Note: Jenkins restart may be required for permissions to take effect."
+                # Try adding current user to docker group
+                if id -u $JENKINS_USER > /dev/null 2>&1; then
+                    sudo usermod -aG docker $JENKINS_USER || true
+                    echo "$JENKINS_USER added to docker group (or already a member)."
+                else
+                    echo "Warning: user $JENKINS_USER does not exist. Skipping docker group add."
+                fi
 
-                        # Optional: test docker access (won’t fail build)
-                        sudo -u jenkins docker ps || echo " Jenkins may need restart to apply permissions."
-                    '''
-                }
-            }
+                # Optional: test docker access (won’t fail build)
+                docker ps || echo "Warning: docker access may require restart or different user."
+            '''
         }
+    }
+}
+
 
         // ================================================
         // Build & Push Docker Image
