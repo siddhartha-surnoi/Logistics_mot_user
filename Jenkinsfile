@@ -78,7 +78,7 @@ pipeline {
         // ================================================
         // stage('Unit Test & Code Coverage') {
         //     steps {
-        //         echo "🧪 Running unit tests & generating JaCoCo coverage..."
+        //         echo " Running unit tests & generating JaCoCo coverage..."
         //         sh '''
         //             ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
         //         '''
@@ -145,7 +145,7 @@ pipeline {
                     def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                     def appVer = meta['APP_VERSION']
 
-                    echo "🔍 Starting ECR scan for ${appVer}..."
+                    echo " Starting ECR scan for ${appVer}..."
                     def startStatus = sh(script: "aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION}", returnStatus: true)
                     if (startStatus == 0) {
                         timeout(time: 10, unit: 'MINUTES') {
