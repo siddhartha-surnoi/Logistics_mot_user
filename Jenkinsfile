@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         MAVEN_LOG = "target/maven-build.log"
-        // SONARQUBE_ENV = "sonarqube" 
         AWS_REGION = "ap-south-1"
         ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
         IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
@@ -11,6 +10,9 @@ pipeline {
 
     stages {
 
+        // ================================================
+        // Webhook Info Stage
+        // ================================================
         stage('Webhook Info') {
             steps {
                 script {
@@ -45,6 +47,9 @@ pipeline {
             }
         }
 
+        // ================================================
+        // Build Stage
+        // ================================================
         stage('Build') {
             steps {
                 echo " Building application on branch: ${env.BRANCH_NAME}"
@@ -56,20 +61,27 @@ pipeline {
             }
         }
 
-          stage('Sonar Scan') {
-          environment { scannerHome = tool 'sonar-7.2' }
-          steps {
-            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-              withSonarQubeEnv('SonarQube-Server') {
-                sh """${scannerHome}/bin/sonar-scanner -Dsonar.login=$SONAR_TOKEN -Dproject.settings=sonar-project.properties"""
-              }
+        // ================================================
+        // SonarQube Scan Stage
+        // ================================================
+        stage('Sonar Scan') {
+            environment { 
+                scannerHome = tool 'sonar-7.2' 
             }
-          }
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    withSonarQubeEnv('SonarQube-Server') {
+                        sh """${scannerHome}/bin/sonar-scanner \
+                            -Dsonar.login=$SONAR_TOKEN \
+                            -Dproject.settings=sonar-project.properties"""
+                    }
+                }
+            }
         }
-      }
-    }
 
-        
+        // ================================================
+        // Docker Build & Push Stage
+        // ================================================
         stage('Build & Push Docker Image') {
             steps {
                 script {
@@ -77,6 +89,7 @@ pipeline {
                     if (dockerCheck != 'ok') {
                         error "🚫 Docker is not accessible on this agent even with sudo. Please ensure Docker is installed and Jenkins user has sudo privileges."
                     }
+
                     echo "✅ Docker is accessible via sudo. Proceeding..."
 
                     sh """
@@ -88,20 +101,28 @@ pipeline {
             }
         }
 
+        // ================================================
+        // ECR Image Scan Stage
+        // ================================================
         stage('ECR Image Scan') {
             steps {
                 script {
                     echo "🔍 Starting ECR image scan..."
                     sh """
-                        aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --region ${AWS_REGION}
+                        aws ecr start-image-scan \
+                            --repository-name logistics/logisticsmotuser \
+                            --image-id imageTag=${IMAGE_TAG} \
+                            --region ${AWS_REGION}
                     """
                     echo "✅ Image scan initiated for ${ECR_REPO}:${IMAGE_TAG}"
                 }
             }
         }
-
     }
 
+    // ================================================
+    // Post Actions
+    // ================================================
     post {
         success {
             script {
