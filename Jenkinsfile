@@ -48,17 +48,34 @@ pipeline {
         }
 
         // ================================================
-        // Build + Unit Test + Code Coverage
+        // Build Stage
         // ================================================
-        stage('Build & Unit Test with Coverage') {
+        stage('Build') {
             steps {
-                echo " Building & running tests for branch: ${env.BRANCH_NAME}"
+                echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
                 sh '''
                     chmod +x mvnw || true
-                    ./mvnw clean verify -Pdeveloper > ${MAVEN_LOG} 2>&1
+                    ./mvnw clean compile -Pdeveloper > ${MAVEN_LOG} 2>&1
+                '''
+                echo "✅ Build completed successfully"
+            }
+        }
+
+        // ================================================
+        // Unit Test + Code Coverage
+        // ================================================
+        stage('Unit Test & Code Coverage') {
+            steps {
+                echo "🧪 Running unit tests & generating JaCoCo coverage..."
+                sh '''
+                    ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
                 '''
                 junit 'target/surefire-reports/*.xml'
-                jacoco execPattern: 'target/jacoco.exec', classPattern: 'target/classes', sourcePattern: 'src/main/java'
+                jacoco(
+                    execPattern: 'target/jacoco.exec',
+                    classPattern: 'target/classes',
+                    sourcePattern: 'src/main/java'
+                )
                 archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
             }
         }
