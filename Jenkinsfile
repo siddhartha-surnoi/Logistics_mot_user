@@ -49,49 +49,48 @@ pipeline {
          // ================================================
         // Security Scan (OWASP)
         // ================================================
-        // stage('Security Scan (OWASP)') {
-        //   steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
-        //   post {
-        //     always {
-        //       archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-        //       publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
-        //     }
-        //   }
-        // }
+        stage('Security Scan (OWASP)') {
+          steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
+          post {
+            always {
+              archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+              publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
+            }
+          }
+        }
 
         // ================================================
         // Build Stage
         // ================================================
-       stage('Build') {
-    steps {
-        
-sh """
-    mkdir -p target
-    ./mvnw clean compile -Pdeveloper | tee ${MAVEN_LOG}
-"""
-
-    }
-}
-
+        stage('Build') {
+            steps {
+                echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
+                sh '''
+                    chmod +x mvnw || true
+                    ./mvnw clean compile -Pdeveloper > ${MAVEN_LOG} 2>&1
+                '''
+                echo "✅ Build completed successfully"
+            }
+        }
 
         // ================================================
         // Unit Test + Code Coverage
         // ================================================
-        // stage('Unit Test & Code Coverage') {
-        //     steps {
-        //         echo "🧪 Running unit tests & generating JaCoCo coverage..."
-        //         sh '''
-        //             ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
-        //         '''
-        //         junit 'target/surefire-reports/*.xml'
-        //         jacoco(
-        //             execPattern: 'target/jacoco.exec',
-        //             classPattern: 'target/classes',
-        //             sourcePattern: 'src/main/java'
-        //         )
-        //         archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
-        //     }
-        // }
+        stage('Unit Test & Code Coverage') {
+            steps {
+                echo "🧪 Running unit tests & generating JaCoCo coverage..."
+                sh '''
+                    ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
+                '''
+                junit 'target/surefire-reports/*.xml'
+                jacoco(
+                    execPattern: 'target/jacoco.exec',
+                    classPattern: 'target/classes',
+                    sourcePattern: 'src/main/java'
+                )
+                archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
+            }
+        }
 
         // ================================================
         // SonarQube Scan
