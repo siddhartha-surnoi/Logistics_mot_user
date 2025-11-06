@@ -46,21 +46,6 @@ pipeline {
         }
 
         // ================================================
-        // Security Scan (OWASP)
-        // ================================================
-        // stage('Security Scan (OWASP)') {
-        //     steps {
-        //         sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true'
-        //     }
-        //     post {
-        //         always {
-        //             archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-        //             publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
-        //         }
-        //     }
-        // }
-
-        // ================================================
         // Build
         // ================================================
         stage('Build') {
@@ -73,19 +58,6 @@ pipeline {
                 '''
             }
         }
-
-        // ================================================
-        // Unit Test & Coverage
-        // ================================================
-        // stage('Unit Test & Code Coverage') {
-        //     steps {
-        //         echo " Running unit tests..."
-        //         sh './mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1'
-        //         junit 'target/surefire-reports/*.xml'
-        //         jacoco(execPattern: 'target/jacoco.exec', classPattern: 'target/classes', sourcePattern: 'src/main/java')
-        //         archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
-        //     }
-        // }
 
         // ================================================
         // SonarQube Scan
@@ -119,28 +91,27 @@ pipeline {
         // Docker Permissions Check
         // ================================================
         stage('Docker Permission Check') {
-    steps {
-        script {
-            echo " Granting Docker permissions to Jenkins user..."
-            sh '''
-                # Ensure docker group exists
-                if ! getent group docker > /dev/null 2>&1; then
-                    sudo groupadd docker
-                fi
+            steps {
+                script {
+                    echo " Granting Docker permissions to Jenkins user..."
+                    sh '''
+                        # Ensure docker group exists
+                        if ! getent group docker > /dev/null 2>&1; then
+                            sudo groupadd docker
+                        fi
 
-                # Add Jenkins user to docker group
-                sudo usermod -aG docker jenkins
+                        # Add Jenkins user to docker group
+                        sudo usermod -aG docker jenkins
 
-                echo " Jenkins user added to 'docker' group successfully."
-                echo " Note: Jenkins restart may be required for permissions to take effect."
+                        echo " Jenkins user added to 'docker' group successfully."
+                        echo " Note: Jenkins restart may be required for permissions to take effect."
 
-                # Optional: test docker access (won’t fail build)
-                sudo -u jenkins docker ps || echo " Jenkins may need restart to apply permissions."
-            '''
+                        # Optional: test docker access (won’t fail build)
+                        sudo -u jenkins docker ps || echo " Jenkins may need restart to apply permissions."
+                    '''
+                }
+            }
         }
-    }
-}
-
 
         // ================================================
         // Build & Push Docker Image
@@ -182,9 +153,10 @@ pipeline {
                 }
             }
         }
-    }
 
-       // ================================================
+    } // end of stages
+
+    // ================================================
     //  Post Actions (Detailed Summary)
     // ================================================
     post {
@@ -195,7 +167,6 @@ pipeline {
                     returnStdout: true
                 ).trim()
 
-                // Try reading JaCoCo coverage if available
                 def coveragePercent = sh(
                     script: """
                         if [ -f target/site/jacoco/jacoco.xml ]; then
@@ -246,6 +217,4 @@ pipeline {
             echo " Build completed at: ${new Date()}"
         }
     }
-}
-
 }
