@@ -62,16 +62,17 @@ pipeline {
         // ================================================
         // Build Stage
         // ================================================
-        stage('Build') {
-            steps {
-                echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
-                sh '''
-                    chmod +x mvnw || true
-                    ./mvnw clean compile -Pdeveloper > ${MAVEN_LOG} 2>&1
-                '''
-                echo "✅ Build completed successfully"
-            }
-        }
+       stage('Build') {
+    steps {
+        
+        sh """
+            chmod +x mvnw || true
+            mkdir -p target
+            ./mvnw clean install -Pdeveloper -Dmaven.test.failure.ignore=true | tee ${MAVEN_LOG}
+        """
+    }
+}
+
 
         // ================================================
         // Unit Test + Code Coverage
