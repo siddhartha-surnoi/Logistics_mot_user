@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         MAVEN_LOG = "target/maven-build.log"
-        SONARQUBE_ENV = "sonarqube" 
+        // SONARQUBE_ENV = "sonarqube" 
         AWS_REGION = "ap-south-1"
         ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
         IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
@@ -56,6 +56,20 @@ pipeline {
             }
         }
 
+          stage('Sonar Scan') {
+          environment { scannerHome = tool 'sonar-7.2' }
+          steps {
+            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+              withSonarQubeEnv('SonarQube-Server') {
+                sh """${scannerHome}/bin/sonar-scanner -Dsonar.login=$SONAR_TOKEN -Dproject.settings=sonar-project.properties"""
+              }
+            }
+          }
+        }
+      }
+    }
+
+        
         stage('Build & Push Docker Image') {
             steps {
                 script {
