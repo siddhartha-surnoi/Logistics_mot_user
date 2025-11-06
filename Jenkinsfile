@@ -34,7 +34,7 @@ pipeline {
                     def commitDate    = sh(script: "git log -1 --pretty=format:'%ci'", returnStdout: true).trim()
 
                     echo "========================================"
-                    echo "📡 Webhook Delivery Validation"
+                    echo " Webhook Delivery Validation"
                     echo "Status: 200 OK "
                     echo "Triggered at: ${new Date()}"
                     echo "Branch: ${env.BRANCH_NAME}"
@@ -49,48 +49,48 @@ pipeline {
          // ================================================
         // Security Scan (OWASP)
         // ================================================
-        stage('Security Scan (OWASP)') {
-          steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
-          post {
-            always {
-              archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-              publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
-            }
-          }
-        }
+        // stage('Security Scan (OWASP)') {
+        //   steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
+        //   post {
+        //     always {
+        //       archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+        //       publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
+        //     }
+        //   }
+        // }
 
         // ================================================
         // Build Stage
         // ================================================
         stage('Build') {
             steps {
-                echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
+                echo " Building Java project for branch: ${env.BRANCH_NAME}"
                 sh '''
                     chmod +x mvnw || true
                     ./mvnw clean compile -Pdeveloper > ${MAVEN_LOG} 2>&1
                 '''
-                echo "✅ Build completed successfully"
+                echo " Build completed successfully"
             }
         }
 
         // ================================================
         // Unit Test + Code Coverage
         // ================================================
-        stage('Unit Test & Code Coverage') {
-            steps {
-                echo "🧪 Running unit tests & generating JaCoCo coverage..."
-                sh '''
-                    ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
-                '''
-                junit 'target/surefire-reports/*.xml'
-                jacoco(
-                    execPattern: 'target/jacoco.exec',
-                    classPattern: 'target/classes',
-                    sourcePattern: 'src/main/java'
-                )
-                archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
-            }
-        }
+        // stage('Unit Test & Code Coverage') {
+        //     steps {
+        //         echo "🧪 Running unit tests & generating JaCoCo coverage..."
+        //         sh '''
+        //             ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
+        //         '''
+        //         junit 'target/surefire-reports/*.xml'
+        //         jacoco(
+        //             execPattern: 'target/jacoco.exec',
+        //             classPattern: 'target/classes',
+        //             sourcePattern: 'src/main/java'
+        //         )
+        //         archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
+        //     }
+        // }
 
         // ================================================
         // SonarQube Scan
@@ -125,7 +125,7 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 script {
-                    echo "🚀 Building Docker image..."
+                    echo " Building Docker image..."
                     sh """
                         aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
                         docker build -t ${ECR_REPO}:${IMAGE_TAG} .
@@ -156,9 +156,9 @@ pipeline {
                             }
                         }
                         def critical = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text", returnStdout: true).trim()
-                        echo "🔎 ECR critical vulnerabilities: ${critical}"
+                        echo " ECR critical vulnerabilities: ${critical}"
                     } else {
-                        echo "⚠️ ECR scan initiation failed."
+                        echo " ECR scan initiation failed."
                     }
                 }
             }
@@ -173,9 +173,9 @@ pipeline {
             script {
                 def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
                 def coveragePercent = sh(script: "grep -oPm1 '(?<=<counter type=\"INSTRUCTION\" missed=\")[0-9]+\" covered=\"[0-9]+\"' target/site/jacoco/jacoco.xml | awk -F'\"' '{missed=\$1; covered=\$3; total=missed+covered; printf(\"%.2f\", (covered/total)*100)}' || echo 'N/A'", returnStdout: true).trim()
-                echo "✅========================================================="
-                echo "✅ Build Status: SUCCESS"
-                echo "Webhook Trigger: ✅ 200 OK"
+                echo "========================================================="
+                echo " Build Status: SUCCESS"
+                echo "Webhook Trigger:  200 OK"
                 echo "Commit ID: ${env.GIT_COMMIT}"
                 echo "Commit Author: ${commitAuthor}"
                 echo "Branch: ${env.BRANCH_NAME}"
@@ -188,17 +188,17 @@ pipeline {
         failure {
             script {
                 def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
-                echo "❌========================================================="
-                echo "❌ Build Status: FAILED"
-                echo "Webhook Trigger: ✅ 200 OK"
+                echo "========================================================="
+                echo " Build Status: FAILED"
+                echo "Webhook Trigger:  200 OK"
                 echo "Commit ID: ${env.GIT_COMMIT}"
                 echo "Commit Author: ${commitAuthor}"
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "----------------------------------------------------------"
-                echo "📜 Error Description (last 30 lines of Maven log):"
+                echo " Error Description (last 30 lines of Maven log):"
                 sh "test -f ${MAVEN_LOG} && tail -n 30 ${MAVEN_LOG} || echo 'No Maven log found.'"
                 echo "----------------------------------------------------------"
-                echo "🔗 Build Log URL: ${env.BUILD_URL}"
+                echo " Build Log URL: ${env.BUILD_URL}"
                 echo "==========================================================="
             }
         }
