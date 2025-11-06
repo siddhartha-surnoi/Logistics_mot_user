@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         MAVEN_LOG = "target/maven-build.log"
-        SONARQUBE_ENV = "sonarqube" // Jenkins SonarQube Server Name
+        SONARQUBE_ENV = "sonarqube" 
         AWS_REGION = "ap-south-1"
         ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
         IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
@@ -11,16 +11,15 @@ pipeline {
 
     stages {
 
-        // ==========================================================
-        // Webhook Information
-        // ==========================================================
         stage('Webhook Info') {
             steps {
                 script {
                     echo "========================================"
                     echo "📡 Checking Build Trigger Source"
 
-                    def webhookTriggered = env.GIT_URL?.contains("github.com")
+                    def gitUrl = env.GIT_URL ?: sh(script: "git config --get remote.origin.url", returnStdout: true).trim()
+                    def webhookTriggered = gitUrl.contains("github.com")
+
                     if (webhookTriggered) {
                         echo " Build triggered by GitHub Webhook (HTTP 200 OK received)"
                     } else {
@@ -46,9 +45,6 @@ pipeline {
             }
         }
 
-        // ==========================================================
-        // Build Stage
-        // ==========================================================
         stage('Build') {
             steps {
                 echo " Building application on branch: ${env.BRANCH_NAME}"
@@ -60,9 +56,6 @@ pipeline {
             }
         }
 
-        // ==========================================================
-        // Docker Build & Push to ECR using sudo
-        // ==========================================================
         stage('Build & Push Docker Image') {
             steps {
                 script {
@@ -81,14 +74,20 @@ pipeline {
             }
         }
 
-        // ==========================================================
-        // ECR Image Scan Stage
-        // ==========================================================
-        
+        stage('ECR Image Scan') {
+            steps {
+                script {
+                    echo "🔍 Starting ECR image scan..."
+                    sh """
+                        aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${IMAGE_TAG} --region ${AWS_REGION}
+                    """
+                    echo "✅ Image scan initiated for ${ECR_REPO}:${IMAGE_TAG}"
+                }
+            }
+        }
 
-    // ==========================================================
-    // Post Actions
-    // ==========================================================
+    }
+
     post {
         success {
             script {
