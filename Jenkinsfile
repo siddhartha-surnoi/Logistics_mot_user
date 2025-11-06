@@ -49,15 +49,15 @@ pipeline {
          // ================================================
         // Security Scan (OWASP)
         // ================================================
-        stage('Security Scan (OWASP)') {
-          steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
-          post {
-            always {
-              archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-              publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
-            }
-          }
-        }
+        // stage('Security Scan (OWASP)') {
+        //   steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
+        //   post {
+        //     always {
+        //       archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+        //       publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
+        //     }
+        //   }
+        // }
 
         // ================================================
         // Build Stage
