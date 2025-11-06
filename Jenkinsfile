@@ -3,8 +3,6 @@ pipeline {
 
     environment {
         MAVEN_LOG = "target/maven-build.log"
-        AWS_REGION = "ap-south-1"
-        ECR_REPO = "361769585646.dkr.ecr.ap-south-1.amazonaws.com/logistics/logisticsmotuser"
         IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
     }
 
@@ -46,17 +44,20 @@ pipeline {
                 }
             }
         }
-         // ================================================
+
+        // ================================================
         // Security Scan (OWASP)
         // ================================================
         // stage('Security Scan (OWASP)') {
-        //   steps { sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true' }
-        //   post {
-        //     always {
-        //       archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-        //       publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
+        //     steps {
+        //         sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -DoutputDirectory=target -B || true'
         //     }
-        //   }
+        //     post {
+        //         always {
+        //             archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+        //             publishHTML(target: [reportDir: 'target', reportFiles: 'dependency-check-report.html', reportName: 'OWASP Dependency Report'])
+        //         }
+        //     }
         // }
 
         // ================================================
@@ -66,6 +67,7 @@ pipeline {
             steps {
                 echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
                 sh '''
+                    mkdir -p target
                     chmod +x mvnw || true
                     ./mvnw clean compile -Pdeveloper > ${MAVEN_LOG} 2>&1
                 '''
@@ -95,19 +97,20 @@ pipeline {
         // ================================================
         // SonarQube Scan
         // ================================================
-      stage('SonarQube Scan') {
-    environment { scannerHome = tool 'sonar-7.2' }
-    steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-            withSonarQubeEnv('SonarQube-Server') {
-                sh """
-                    ${scannerHome}/bin/sonar-scanner \
-                      -Dsonar.login=$SONAR_TOKEN
-                """
+        stage('SonarQube Scan') {
+            environment { scannerHome = tool 'sonar-7.2' }
+            steps {
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    withSonarQubeEnv('SonarQube-Server') {
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                              -Dsonar.login=$SONAR_TOKEN
+                        """
+                    }
+                }
             }
         }
-    }
-}
+
         // ================================================
         // Quality Gate Check
         // ================================================
@@ -120,18 +123,23 @@ pipeline {
         }
 
         // ================================================
-        // Docker Build & Push
+        // Docker Build & Push (using secrets)
         // ================================================
         stage('Build & Push Docker Image') {
             steps {
-                script {
-                    echo "🚀 Building Docker image..."
-                    sh """
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
-                        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                        docker push ${ECR_REPO}:${IMAGE_TAG}
-                        echo "APP_VERSION=${IMAGE_TAG}" > build_metadata.env
-                    """
+                withCredentials([
+                    string(credentialsId: 'aws-region', variable: 'AWS_REGION'),
+                    string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
+                ]) {
+                    script {
+                        echo "🚀 Building and pushing Docker image to ECR..."
+                        sh """
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                            docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                            docker push ${ECR_REPO}:${IMAGE_TAG}
+                            echo "APP_VERSION=${IMAGE_TAG}" > build_metadata.env
+                        """
+                    }
                 }
             }
         }
@@ -141,24 +149,29 @@ pipeline {
         // ================================================
         stage('ECR Image Scan') {
             steps {
-                script {
-                    def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
-                    def appVer = meta['APP_VERSION']
+                withCredentials([
+                    string(credentialsId: 'aws-region', variable: 'AWS_REGION'),
+                    string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
+                ]) {
+                    script {
+                        def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
+                        def appVer = meta['APP_VERSION']
 
-                    echo "🔍 Starting ECR scan for ${appVer}..."
-                    def startStatus = sh(script: "aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION}", returnStatus: true)
-                    if (startStatus == 0) {
-                        timeout(time: 10, unit: 'MINUTES') {
-                            waitUntil {
-                                def s = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanStatus.status' --output text", returnStdout: true).trim()
-                                echo "ECR scan status: ${s}"
-                                return s == 'COMPLETE'
+                        echo "🔍 Starting ECR scan for ${appVer}..."
+                        def startStatus = sh(script: "aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION}", returnStatus: true)
+                        if (startStatus == 0) {
+                            timeout(time: 10, unit: 'MINUTES') {
+                                waitUntil {
+                                    def s = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanStatus.status' --output text", returnStdout: true).trim()
+                                    echo "ECR scan status: ${s}"
+                                    return s == 'COMPLETE'
+                                }
                             }
+                            def critical = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text", returnStdout: true).trim()
+                            echo "🔎 ECR critical vulnerabilities: ${critical}"
+                        } else {
+                            echo "⚠️ ECR scan initiation failed."
                         }
-                        def critical = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text", returnStdout: true).trim()
-                        echo "🔎 ECR critical vulnerabilities: ${critical}"
-                    } else {
-                        echo "⚠️ ECR scan initiation failed."
                     }
                 }
             }
