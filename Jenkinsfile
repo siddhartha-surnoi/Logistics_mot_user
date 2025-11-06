@@ -11,7 +11,7 @@ pipeline {
     stages {
 
         // ================================================
-        // Webhook Info Stage
+        // Webhook Info
         // ================================================
         stage('Webhook Info') {
             steps {
@@ -48,33 +48,36 @@ pipeline {
         }
 
         // ================================================
-        // Build Stage
+        // Build + Unit Test + Code Coverage
         // ================================================
-        stage('Build') {
+        stage('Build & Unit Test with Coverage') {
             steps {
-                echo " Building application on branch: ${env.BRANCH_NAME}"
+                echo " Building & running tests for branch: ${env.BRANCH_NAME}"
                 sh '''
-                    mkdir -p target
                     chmod +x mvnw || true
-                    ./mvnw clean package -DskipTests > ${MAVEN_LOG} 2>&1 || (echo " Maven Build Failed" && exit 1)
+                    ./mvnw clean verify -Pdeveloper > ${MAVEN_LOG} 2>&1
                 '''
+                junit 'target/surefire-reports/*.xml'
+                jacoco execPattern: 'target/jacoco.exec', classPattern: 'target/classes', sourcePattern: 'src/main/java'
+                archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
             }
         }
 
         // ================================================
-        // SonarQube Scan Stage
+        // SonarQube Scan
         // ================================================
         stage('SonarQube Scan') {
-            environment { 
-                scannerHome = tool 'sonar-7.2' 
-            }
+            environment { scannerHome = tool 'sonar-7.2' }
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Server') {
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
-                            -Dsonar.login=$SONAR_TOKEN \
-                            -Dproject.settings=sonar-project.properties
+                              -Dsonar.login=$SONAR_TOKEN \
+                              -Dsonar.projectKey=logistics-user \
+                              -Dsonar.projectName="Logistics MOT User" \
+                              -Dsonar.java.binaries=target/classes \
+                              -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                         """
                     }
                 }
@@ -82,33 +85,27 @@ pipeline {
         }
 
         // ================================================
-        // Quality Gate Stage
+        // Quality Gate Check
         // ================================================
         stage('Quality Gate') {
             steps {
-                timeout(time: 2, unit: 'MINUTES') {
+                timeout(time: 3, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
             }
         }
 
         // ================================================
-        // Docker Build & Push Stage
+        // Docker Build & Push
         // ================================================
         stage('Build & Push Docker Image') {
             steps {
                 script {
-                    def dockerCheck = sh(script: "sudo docker info > /dev/null 2>&1 && echo 'ok' || echo 'fail'", returnStdout: true).trim()
-                    if (dockerCheck != 'ok') {
-                        error "🚫 Docker is not accessible on this agent even with sudo. Please ensure Docker is installed and Jenkins user has sudo privileges."
-                    }
-
-                    echo "✅ Docker is accessible via sudo. Proceeding..."
-
+                    echo "🚀 Building Docker image..."
                     sh """
-                        aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REPO}
-                        sudo docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                        sudo docker push ${ECR_REPO}:${IMAGE_TAG}
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+                        docker push ${ECR_REPO}:${IMAGE_TAG}
                         echo "APP_VERSION=${IMAGE_TAG}" > build_metadata.env
                     """
                 }
@@ -116,29 +113,28 @@ pipeline {
         }
 
         // ================================================
-        // ECR Image Scan Stage (Advanced)
+        // ECR Image Scan
         // ================================================
         stage('ECR Image Scan') {
             steps {
                 script {
-                    def meta = readFile('build_metadata.env').split("\n").collectEntries { def p = it.split('='); [(p[0]): p[1]] }
+                    def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                     def appVer = meta['APP_VERSION']
 
                     echo "🔍 Starting ECR scan for ${appVer}..."
-                    def startStatus = sh(script: "aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${env.AWS_REGION}", returnStatus: true)
-
-                    if (startStatus != 0) {
-                        echo "⚠️ Failed to start ECR image scan (non-fatal)."
-                    } else {
+                    def startStatus = sh(script: "aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION}", returnStatus: true)
+                    if (startStatus == 0) {
                         timeout(time: 10, unit: 'MINUTES') {
                             waitUntil {
-                                def status = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${env.AWS_REGION} --query 'imageScanStatus.status' --output text || echo PENDING", returnStdout: true).trim()
-                                echo "ECR scan status: ${status}"
-                                return status == 'COMPLETE'
+                                def s = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanStatus.status' --output text", returnStdout: true).trim()
+                                echo "ECR scan status: ${s}"
+                                return s == 'COMPLETE'
                             }
                         }
-                        def critical = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${env.AWS_REGION} --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text || echo 0", returnStdout: true).trim()
+                        def critical = sh(script: "aws ecr describe-image-scan-findings --repository-name logistics/logisticsmotuser --image-id imageTag=${appVer} --region ${AWS_REGION} --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text", returnStdout: true).trim()
                         echo "🔎 ECR critical vulnerabilities: ${critical}"
+                    } else {
+                        echo "⚠️ ECR scan initiation failed."
                     }
                 }
             }
@@ -146,18 +142,20 @@ pipeline {
     }
 
     // ================================================
-    // Post Actions
+    // Post Actions (Full Summary Output)
     // ================================================
     post {
         success {
             script {
                 def commitAuthor = sh(script: "git log -1 --pretty=format:'%an <%ae>'", returnStdout: true).trim()
+                def coveragePercent = sh(script: "grep -oPm1 '(?<=<counter type=\"INSTRUCTION\" missed=\")[0-9]+\" covered=\"[0-9]+\"' target/site/jacoco/jacoco.xml | awk -F'\"' '{missed=\$1; covered=\$3; total=missed+covered; printf(\"%.2f\", (covered/total)*100)}' || echo 'N/A'", returnStdout: true).trim()
                 echo "✅========================================================="
                 echo "✅ Build Status: SUCCESS"
                 echo "Webhook Trigger: ✅ 200 OK"
                 echo "Commit ID: ${env.GIT_COMMIT}"
                 echo "Commit Author: ${commitAuthor}"
                 echo "Branch: ${env.BRANCH_NAME}"
+                echo "Code Coverage: ${coveragePercent}%"
                 echo "Build URL: ${env.BUILD_URL}"
                 echo "==========================================================="
             }
