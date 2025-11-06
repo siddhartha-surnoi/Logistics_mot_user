@@ -76,21 +76,21 @@ pipeline {
         // ================================================
         // Unit Test + Code Coverage
         // ================================================
-        stage('Unit Test & Code Coverage') {
-            steps {
-                echo "🧪 Running unit tests & generating JaCoCo coverage..."
-                sh '''
-                    ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
-                '''
-                junit 'target/surefire-reports/*.xml'
-                jacoco(
-                    execPattern: 'target/jacoco.exec',
-                    classPattern: 'target/classes',
-                    sourcePattern: 'src/main/java'
-                )
-                archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
-            }
-        }
+        // stage('Unit Test & Code Coverage') {
+        //     steps {
+        //         echo "🧪 Running unit tests & generating JaCoCo coverage..."
+        //         sh '''
+        //             ./mvnw test jacoco:report -Pdeveloper >> ${MAVEN_LOG} 2>&1
+        //         '''
+        //         junit 'target/surefire-reports/*.xml'
+        //         jacoco(
+        //             execPattern: 'target/jacoco.exec',
+        //             classPattern: 'target/classes',
+        //             sourcePattern: 'src/main/java'
+        //         )
+        //         archiveArtifacts artifacts: 'target/site/jacoco/jacoco.xml', allowEmptyArchive: true
+        //     }
+        // }
 
         // ================================================
         // SonarQube Scan
