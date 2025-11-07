@@ -1,25 +1,17 @@
 pipeline {
     agent { label 'java-agent-1' }
 
-    parameters {
-        choice(
-            name: 'ACTION',
-            choices: ['BUILD_ONLY', 'SCAN_SONARQUBE', 'SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'],
-            description: 'Choose the pipeline action to perform'
-        )
+    environment {
+        // Extract version dynamically from pom.xml for Docker tagging
+        APP_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
     }
 
-    environment {
-        APP_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
-        IS_FEATURE_BRANCH = "${env.BRANCH_NAME}".startsWith("feature_")
-    }
     stages {
 
         // ================================================
         // Build
         // ================================================
         stage('Build') {
-            when { anyOf { expression { params.ACTION in ['BUILD_ONLY', 'SCAN_SONARQUBE', 'SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'] } } }
             steps {
                 echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
                 sh 'mvn clean package -DskipTests'
@@ -32,18 +24,18 @@ pipeline {
         stage('SonarQube Scan') {
             when {
                 anyOf {
-                    expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] }
                     expression { env.BRANCH_NAME.startsWith('feature_') }
+                    expression { env.BRANCH_NAME == 'master' }
                 }
             }
             environment { scannerHome = tool 'sonar-7.2' }
             steps {
+                echo "🔍 Running SonarQube analysis..."
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Server') {
                         sh '''
-                            echo "🔍 Running SonarQube analysis..."
                             ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.token=$SONAR_TOKEN
+                              -Dsonar.login=$SONAR_TOKEN
                         '''
                     }
                 }
@@ -56,8 +48,8 @@ pipeline {
         stage('Quality Gate') {
             when {
                 anyOf {
-                    expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] }
                     expression { env.BRANCH_NAME.startsWith('feature_') }
+                    expression { env.BRANCH_NAME == 'master' }
                 }
             }
             steps {
@@ -68,32 +60,32 @@ pipeline {
         }
 
         // ================================================
-        // OWASP Security Scan (Updated)
+        // OWASP Security Scan
         // ================================================
-        // stage('Security Scan (OWASP)') {
-        //     when {
-        //         anyOf {
-        //             expression { params.ACTION in ['SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'] }
-        //             expression { env.BRANCH_NAME.startsWith('feature_') }
-        //         }
-        //     }
-        //     steps {
-        //         echo " Running OWASP Dependency Check..."
-        //         sh '''
-        //             mvn org.owasp:dependency-check-maven:check \
-        //                 -Dformat=ALL \
-        //                 -DoutputDirectory=target \
-        //                 -B || true
-        //         '''
-        //     }
-        //     post {
-        //         always {
-        //             echo " Archiving and publishing OWASP dependency reports..."
-        //             archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-        //             dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
-        //         }
-        //     }
-        // }
+        stage('Security Scan (OWASP)') {
+            when {
+                anyOf {
+                    expression { env.BRANCH_NAME.startsWith('feature_') }
+                    expression { env.BRANCH_NAME == 'master' }
+                }
+            }
+            steps {
+                echo "🔒 Running OWASP Dependency Check..."
+                sh '''
+                    mvn org.owasp:dependency-check-maven:check \
+                        -Dformat=ALL \
+                        -DoutputDirectory=target \
+                        -B || true
+                '''
+            }
+            post {
+                always {
+                    echo "📊 Archiving and publishing OWASP dependency reports..."
+                    archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+                    dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
+                }
+            }
+        }
 
         // ================================================
         // Dependabot Scan (Simulated)
@@ -101,12 +93,12 @@ pipeline {
         stage('Dependabot Scan') {
             when {
                 anyOf {
-                    expression { params.ACTION == 'DEPLOY' }
                     expression { env.BRANCH_NAME.startsWith('feature_') }
+                    expression { env.BRANCH_NAME == 'master' }
                 }
             }
             steps {
-                echo " Running Dependabot scan simulation..."
+                echo "🐙 Running Dependabot scan simulation..."
                 sh '''
                     echo "Fetching Dependabot alerts for repository..."
                     echo "Dependabot scan completed (simulated)."
@@ -120,8 +112,7 @@ pipeline {
         stage('Build & Push Docker Image') {
             when {
                 allOf {
-                    expression { params.ACTION == 'DEPLOY' }
-                    not { expression { env.BRANCH_NAME.startsWith('feature_') } }
+                    expression { env.BRANCH_NAME == 'master' }
                 }
             }
             steps {
@@ -130,7 +121,7 @@ pipeline {
                     string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
                 ]) {
                     script {
-                        echo " Building and pushing Docker image to ECR..."
+                        echo "📦 Building and pushing Docker image to ECR..."
                         sh '''
                             echo "Logging into AWS ECR..."
                             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
@@ -153,10 +144,7 @@ pipeline {
         // ================================================
         stage('ECR Image Scan') {
             when {
-                allOf {
-                    expression { params.ACTION == 'DEPLOY' }
-                    not { expression { env.BRANCH_NAME.startsWith('feature_') } }
-                }
+                expression { env.BRANCH_NAME == 'master' }
             }
             steps {
                 withCredentials([string(credentialsId: 'aws-region', variable: 'AWS_REGION')]) {
@@ -164,7 +152,7 @@ pipeline {
                         def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                         def appVer = meta['APP_VERSION']
 
-                        echo " Starting ECR image scan for ${appVer}..."
+                        echo "🔎 Starting ECR image scan for ${appVer}..."
                         sh '''
                             aws ecr start-image-scan \
                                 --repository-name logistics/logisticsmotuser \
@@ -184,8 +172,7 @@ pipeline {
         success {
             echo """
             =========================================================
-              Build Status: SUCCESS
-             Webhook Trigger: 200 OK
+             ✅ Build Status: SUCCESS
              Commit ID: ${env.GIT_COMMIT}
              Branch: ${env.BRANCH_NAME}
              Build URL: ${env.BUILD_URL}
@@ -196,15 +183,14 @@ pipeline {
         failure {
             echo """
             =========================================================
-              Build Status: FAILED
-             Webhook Trigger: 200 OK
+             ❌ Build Status: FAILED
              Branch: ${env.BRANCH_NAME}
-             =========================================================
+            =========================================================
             """
         }
 
         always {
-            echo " Build completed at: ${new Date()}"
+            echo "🕓 Build completed at: ${new Date()}"
         }
     }
 }
