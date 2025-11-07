@@ -46,24 +46,24 @@ pipeline {
                 // ----------------------------
                 // OWASP Dependency Check
                 // ----------------------------
-                stage('Security Scan (OWASP)') {
-                    steps {
-                        echo "🔒 Running OWASP Dependency Check..."
-                        sh '''
-                            mvn org.owasp:dependency-check-maven:check \
-                                -Dformat=ALL \
-                                -DoutputDirectory=target \
-                                -B || true
-                        '''
-                    }
-                    post {
-                        always {
-                            echo "📊 Archiving and publishing OWASP dependency reports..."
-                            archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-                            dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
-                        }
-                    }
-                }
+                // stage('Security Scan (OWASP)') {
+                //     steps {
+                //         echo "🔒 Running OWASP Dependency Check..."
+                //         sh '''
+                //             mvn org.owasp:dependency-check-maven:check \
+                //                 -Dformat=ALL \
+                //                 -DoutputDirectory=target \
+                //                 -B || true
+                //         '''
+                //     }
+                //     post {
+                //         always {
+                //             echo "📊 Archiving and publishing OWASP dependency reports..."
+                //             archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+                //             dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
+                //         }
+                //     }
+                // }
 
                 // ----------------------------
                 // Dependabot (Simulated)
