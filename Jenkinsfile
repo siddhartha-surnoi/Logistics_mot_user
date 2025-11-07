@@ -8,11 +8,11 @@ pipeline {
             description: 'Choose the pipeline action to perform'
         )
     }
-    
 
     environment {
         // Extract version from pom.xml dynamically for Docker tagging
         APP_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
+        IS_FEATURE_BRANCH = "${env.BRANCH_NAME}".startsWith("feature_")
     }
 
     stages {
@@ -23,7 +23,7 @@ pipeline {
         stage('Build') {
             when { anyOf { expression { params.ACTION in ['BUILD_ONLY', 'SCAN_SONARQUBE', 'SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'] } } }
             steps {
-                echo " Building Java project for branch: ${env.BRANCH_NAME}"
+                echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
                 sh 'mvn clean package -DskipTests'
             }
         }
@@ -32,13 +32,18 @@ pipeline {
         // SonarQube Scan
         // ================================================
         stage('SonarQube Scan') {
-            when { anyOf { expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] } } }
+            when {
+                anyOf {
+                    expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] }
+                    expression { env.BRANCH_NAME.startsWith('feature_') }
+                }
+            }
             environment { scannerHome = tool 'sonar-7.2' }
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Server') {
                         sh '''
-                            echo " Running SonarQube analysis..."
+                            echo "🔍 Running SonarQube analysis..."
                             ${scannerHome}/bin/sonar-scanner \
                               -Dsonar.token=$SONAR_TOKEN
                         '''
@@ -51,7 +56,12 @@ pipeline {
         // Quality Gate
         // ================================================
         stage('Quality Gate') {
-            when { anyOf { expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] } } }
+            when {
+                anyOf {
+                    expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] }
+                    expression { env.BRANCH_NAME.startsWith('feature_') }
+                }
+            }
             steps {
                 timeout(time: 3, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -63,9 +73,14 @@ pipeline {
         // OWASP Security Scan
         // ================================================
         stage('Security Scan (OWASP)') {
-            when { anyOf { expression { params.ACTION in ['SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'] } } }
+            when {
+                anyOf {
+                    expression { params.ACTION in ['SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'] }
+                    expression { env.BRANCH_NAME.startsWith('feature_') }
+                }
+            }
             steps {
-                echo " Running OWASP Dependency Check..."
+                echo "🔒 Running OWASP Dependency Check..."
                 sh '''
                     mvn org.owasp:dependency-check-maven:check \
                         -Dformat=ALL \
@@ -75,7 +90,7 @@ pipeline {
             }
             post {
                 always {
-                    echo " Archiving OWASP dependency reports..."
+                    echo "📊 Archiving OWASP dependency reports..."
                     archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
                     publishHTML(target: [
                         reportDir: 'target',
@@ -87,17 +102,41 @@ pipeline {
         }
 
         // ================================================
+        // Dependabot Scan (Simulated)
+        // ================================================
+        stage('Dependabot Scan') {
+            when {
+                anyOf {
+                    expression { params.ACTION == 'DEPLOY' }
+                    expression { env.BRANCH_NAME.startsWith('feature_') }
+                }
+            }
+            steps {
+                echo "🐙 Running Dependabot scan simulation..."
+                sh '''
+                    echo "Fetching Dependabot alerts for repository..."
+                    echo "Dependabot scan completed (simulated)."
+                '''
+            }
+        }
+
+        // ================================================
         // Build & Push Docker Image
         // ================================================
         stage('Build & Push Docker Image') {
-            when { expression { params.ACTION == 'DEPLOY' } }
+            when {
+                allOf {
+                    expression { params.ACTION == 'DEPLOY' }
+                    not { expression { env.BRANCH_NAME.startsWith('feature_') } }
+                }
+            }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-region', variable: 'AWS_REGION'),
                     string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
                 ]) {
                     script {
-                        echo " Building and pushing Docker image to ECR..."
+                        echo "📦 Building and pushing Docker image to ECR..."
                         sh '''
                             echo "Logging into AWS ECR..."
                             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
@@ -119,14 +158,19 @@ pipeline {
         // ECR Image Scan
         // ================================================
         stage('ECR Image Scan') {
-            when { expression { params.ACTION == 'DEPLOY' } }
+            when {
+                allOf {
+                    expression { params.ACTION == 'DEPLOY' }
+                    not { expression { env.BRANCH_NAME.startsWith('feature_') } }
+                }
+            }
             steps {
                 withCredentials([string(credentialsId: 'aws-region', variable: 'AWS_REGION')]) {
                     script {
                         def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                         def appVer = meta['APP_VERSION']
 
-                        echo " Starting ECR image scan for ${appVer}..."
+                        echo "🔎 Starting ECR image scan for ${appVer}..."
                         sh '''
                             aws ecr start-image-scan \
                                 --repository-name logistics/logisticsmotuser \
@@ -135,20 +179,6 @@ pipeline {
                         '''
                     }
                 }
-            }
-        }
-
-        // ================================================
-        // Dependabot Scan (Simulated)
-        // ================================================
-        stage('Dependabot Scan') {
-            when { expression { params.ACTION == 'DEPLOY' } }
-            steps {
-                echo " Running Dependabot scan simulation..."
-                sh '''
-                    echo "Fetching Dependabot alerts for repository..."
-                    echo "Dependabot scan completed (simulated)."
-                '''
             }
         }
     }
@@ -160,8 +190,8 @@ pipeline {
         success {
             echo """
             =========================================================
-              Build Status: SUCCESS
-             Webhook Trigger:  200 OK
+             ✅ Build Status: SUCCESS
+             Webhook Trigger: 200 OK
              Commit ID: ${env.GIT_COMMIT}
              Branch: ${env.BRANCH_NAME}
              Build URL: ${env.BUILD_URL}
@@ -172,7 +202,7 @@ pipeline {
         failure {
             echo """
             =========================================================
-              Build Status: FAILED
+             ❌ Build Status: FAILED
              Webhook Trigger: 200 OK
              Branch: ${env.BRANCH_NAME}
              =========================================================
