@@ -1,24 +1,14 @@
 pipeline {
     agent { label 'java-agent-1' }
 
-    environment {
-        GIT_COMMIT_ID = ''
-        GIT_AUTHOR_NAME = ''
-        GIT_AUTHOR_EMAIL = ''
-    }
-
     stages {
 
         // ================================================
-        // Set Git Info
+        // Checkout
         // ================================================
-        stage('Set Git Info') {
+        stage('Checkout') {
             steps {
-                script {
-                    env.GIT_COMMIT_ID = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    env.GIT_AUTHOR_NAME = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
-                    env.GIT_AUTHOR_EMAIL = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
-                }
+                checkout scm
             }
         }
 
@@ -135,73 +125,92 @@ pipeline {
     // Post Actions (Microsoft Teams Notifications)
     // ================================================
     post {
+        always {
+            echo "Build completed at: ${new Date()}"
+        }
 
         success {
-            echo "Build SUCCESS for branch: ${env.BRANCH_NAME}"
             withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
-                office365ConnectorSend(
-                    message: "*Build SUCCESS* for branch `${env.BRANCH_NAME}`\n" +
-                             "Commit: `${env.GIT_COMMIT_ID}`\n" +
-                             "Author: `${env.GIT_AUTHOR_NAME}`\n" +
-                             "Email: `${env.GIT_AUTHOR_EMAIL}`\n" +
-                             "[View Build](${env.BUILD_URL})",
-                    color: '#00FF00',
-                    status: 'Success',
-                    webhookUrl: WEBHOOK_URL
-                )
+                script {
+                    def gitAuthorName = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+                    def gitAuthorEmail = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
+
+                    office365ConnectorSend(
+                        message: "*Build SUCCESS* for branch `${env.BRANCH_NAME}`\n" +
+                                 "Commit: `${env.GIT_COMMIT}`\n" +
+                                 "Author: `${gitAuthorName}`\n" +
+                                 "Email: `${gitAuthorEmail}`\n" +
+                                 "Job: `${env.JOB_NAME}` #${env.BUILD_NUMBER}\n" +
+                                 "[View Build](${env.BUILD_URL})",
+                        color: '#00FF00',
+                        status: 'Success',
+                        webhookUrl: WEBHOOK_URL
+                    )
+                }
             }
         }
 
         failure {
-            echo "Build FAILED for branch: ${env.BRANCH_NAME}"
             withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
-                office365ConnectorSend(
-                    message: "*Build FAILED* for branch `${env.BRANCH_NAME}`\n" +
-                             "Commit: `${env.GIT_COMMIT_ID}`\n" +
-                             "Author: `${env.GIT_AUTHOR_NAME}`\n" +
-                             "Email: `${env.GIT_AUTHOR_EMAIL}`\n" +
-                             "[View Build](${env.BUILD_URL})",
-                    color: '#FF0000',
-                    status: 'Failure',
-                    webhookUrl: WEBHOOK_URL
-                )
+                script {
+                    def gitAuthorName = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+                    def gitAuthorEmail = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
+
+                    office365ConnectorSend(
+                        message: "*Build FAILED* for branch `${env.BRANCH_NAME}`\n" +
+                                 "Commit: `${env.GIT_COMMIT}`\n" +
+                                 "Author: `${gitAuthorName}`\n" +
+                                 "Email: `${gitAuthorEmail}`\n" +
+                                 "Job: `${env.JOB_NAME}` #${env.BUILD_NUMBER}\n" +
+                                 "[View Build](${env.BUILD_URL})",
+                        color: '#FF0000',
+                        status: 'Failure',
+                        webhookUrl: WEBHOOK_URL
+                    )
+                }
             }
         }
 
         unstable {
-            echo "Build UNSTABLE for branch: ${env.BRANCH_NAME}"
             withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
-                office365ConnectorSend(
-                    message: "*Build UNSTABLE* for branch `${env.BRANCH_NAME}`\n" +
-                             "Commit: `${env.GIT_COMMIT_ID}`\n" +
-                             "Author: `${env.GIT_AUTHOR_NAME}`\n" +
-                             "Email: `${env.GIT_AUTHOR_EMAIL}`\n" +
-                             "[View Build](${env.BUILD_URL})",
-                    color: '#FFA500',
-                    status: 'Unstable',
-                    webhookUrl: WEBHOOK_URL
-                )
+                script {
+                    def gitAuthorName = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+                    def gitAuthorEmail = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
+
+                    office365ConnectorSend(
+                        message: "*Build UNSTABLE* for branch `${env.BRANCH_NAME}`\n" +
+                                 "Commit: `${env.GIT_COMMIT}`\n" +
+                                 "Author: `${gitAuthorName}`\n" +
+                                 "Email: `${gitAuthorEmail}`\n" +
+                                 "Job: `${env.JOB_NAME}` #${env.BUILD_NUMBER}\n" +
+                                 "[View Build](${env.BUILD_URL})",
+                        color: '#FFA500',
+                        status: 'Unstable',
+                        webhookUrl: WEBHOOK_URL
+                    )
+                }
             }
         }
 
         aborted {
-            echo "Build ABORTED for branch: ${env.BRANCH_NAME}"
             withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
-                office365ConnectorSend(
-                    message: "*Build ABORTED* for branch `${env.BRANCH_NAME}`\n" +
-                             "Commit: `${env.GIT_COMMIT_ID}`\n" +
-                             "Author: `${env.GIT_AUTHOR_NAME}`\n" +
-                             "Email: `${env.GIT_AUTHOR_EMAIL}`\n" +
-                             "[View Build](${env.BUILD_URL})",
-                    color: '#808080',
-                    status: 'Aborted',
-                    webhookUrl: WEBHOOK_URL
-                )
-            }
-        }
+                script {
+                    def gitAuthorName = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+                    def gitAuthorEmail = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
 
-        always {
-            echo "Build completed at: ${new Date()}"
+                    office365ConnectorSend(
+                        message: "*Build ABORTED* for branch `${env.BRANCH_NAME}`\n" +
+                                 "Commit: `${env.GIT_COMMIT}`\n" +
+                                 "Author: `${gitAuthorName}`\n" +
+                                 "Email: `${gitAuthorEmail}`\n" +
+                                 "Job: `${env.JOB_NAME}` #${env.BUILD_NUMBER}\n" +
+                                 "[View Build](${env.BUILD_URL})",
+                        color: '#808080',
+                        status: 'Aborted',
+                        webhookUrl: WEBHOOK_URL
+                    )
+                }
+            }
         }
     }
 }
