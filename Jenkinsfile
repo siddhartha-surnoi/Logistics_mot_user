@@ -146,69 +146,56 @@ pipeline {
     }
 
     // ================================================
-    // Post Actions with Teams Notification
+    // Post Actions (Microsoft Teams Notifications)
     // ================================================
     post {
+
         success {
-            echo """
-            =========================================================
-             ✅ Build Status: SUCCESS
-             Commit ID: ${env.GIT_COMMIT}
-             Branch: ${env.BRANCH_NAME}
-             Build URL: ${env.BUILD_URL}
-            =========================================================
-            """
-            office365ConnectorSend(
-                message: "✅ *Build SUCCESS* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
-                color: '#00FF00',
-                status: 'Success',
-                webhookUrl: credentials('teams-webhook')
-            )
+            echo "✅ Build SUCCESS for branch: ${env.BRANCH_NAME}"
+            withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
+                office365ConnectorSend(
+                    message: "✅ *Build SUCCESS* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
+                    color: '#00FF00',
+                    status: 'Success',
+                    webhookUrl: WEBHOOK_URL
+                )
+            }
         }
 
         failure {
-            echo """
-            =========================================================
-             ❌ Build Status: FAILED
-             Branch: ${env.BRANCH_NAME}
-            =========================================================
-            """
-            office365ConnectorSend(
-                message: "❌ *Build FAILED* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
-                color: '#FF0000',
-                status: 'Failure',
-                webhookUrl: credentials('teams-webhook')
-            )
+            echo "❌ Build FAILED for branch: ${env.BRANCH_NAME}"
+            withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
+                office365ConnectorSend(
+                    message: "❌ *Build FAILED* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
+                    color: '#FF0000',
+                    status: 'Failure',
+                    webhookUrl: WEBHOOK_URL
+                )
+            }
         }
 
         unstable {
-            echo """
-            =========================================================
-              Build Status: UNSTABLE
-             Branch: ${env.BRANCH_NAME}
-            =========================================================
-            """
-            office365ConnectorSend(
-                message: "⚠️ *Build UNSTABLE* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
-                color: '#FFA500',
-                status: 'Unstable',
-                webhookUrl: credentials('teams-webhook')
-            )
+            echo "⚠️ Build UNSTABLE for branch: ${env.BRANCH_NAME}"
+            withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
+                office365ConnectorSend(
+                    message: "⚠️ *Build UNSTABLE* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
+                    color: '#FFA500',
+                    status: 'Unstable',
+                    webhookUrl: WEBHOOK_URL
+                )
+            }
         }
 
         aborted {
-            echo """
-            =========================================================
-              Build Status: ABORTED
-             Branch: ${env.BRANCH_NAME}
-            =========================================================
-            """
-            office365ConnectorSend(
-                message: "🚫 *Build ABORTED* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
-                color: '#808080',
-                status: 'Aborted',
-                webhookUrl: credentials('teams-webhook')
-            )
+            echo "⏹️ Build ABORTED for branch: ${env.BRANCH_NAME}"
+            withCredentials([string(credentialsId: 'teams-webhook', variable: 'WEBHOOK_URL')]) {
+                office365ConnectorSend(
+                    message: "⏹️ *Build ABORTED* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
+                    color: '#808080',
+                    status: 'Aborted',
+                    webhookUrl: WEBHOOK_URL
+                )
+            }
         }
 
         always {
