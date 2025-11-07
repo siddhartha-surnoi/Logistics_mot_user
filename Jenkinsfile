@@ -1,36 +1,43 @@
 pipeline {
     agent { label 'java-agent-1' }
 
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['BUILD_ONLY', 'SCAN_SONARQUBE', 'SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'],
+            description: 'Choose the pipeline action to perform'
+        )
+    }
+
     environment {
-        MAVEN_LOG = "target/maven-build.log"
-        IMAGE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
+        // Extract version from pom.xml dynamically for Docker tagging
+        APP_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
     }
 
     stages {
 
         // ================================================
-        // Build 
+        // Build
         // ================================================
-        
-       stage('Build') {
-    steps {
-        echo "Building Java project for branch: ${env.BRANCH_NAME}"
-        // sh 'mvn clean install'
-        sh 'mvn clean package -DskipTests'
-
-    }
-}
-
+        stage('Build') {
+            when { anyOf { expression { params.ACTION in ['BUILD_ONLY', 'SCAN_SONARQUBE', 'SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'] } } }
+            steps {
+                echo " Building Java project for branch: ${env.BRANCH_NAME}"
+                sh 'mvn clean package -DskipTests'
+            }
+        }
 
         // ================================================
         // SonarQube Scan
         // ================================================
         stage('SonarQube Scan') {
+            when { anyOf { expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] } } }
             environment { scannerHome = tool 'sonar-7.2' }
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('SonarQube-Server') {
                         sh '''
+                            echo " Running SonarQube analysis..."
                             ${scannerHome}/bin/sonar-scanner \
                               -Dsonar.token=$SONAR_TOKEN
                         '''
@@ -43,6 +50,7 @@ pipeline {
         // Quality Gate
         // ================================================
         stage('Quality Gate') {
+            when { anyOf { expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] } } }
             steps {
                 timeout(time: 3, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -51,21 +59,55 @@ pipeline {
         }
 
         // ================================================
+        // OWASP Security Scan
+        // ================================================
+        stage('Security Scan (OWASP)') {
+            when { anyOf { expression { params.ACTION in ['SCAN_OWASP', 'SCAN_BOTH', 'DEPLOY'] } } }
+            steps {
+                echo " Running OWASP Dependency Check..."
+                sh '''
+                    mvn org.owasp:dependency-check-maven:check \
+                        -Dformat=ALL \
+                        -DoutputDirectory=target \
+                        -B || true
+                '''
+            }
+            post {
+                always {
+                    echo " Archiving OWASP dependency reports..."
+                    archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+                    publishHTML(target: [
+                        reportDir: 'target',
+                        reportFiles: 'dependency-check-report.html',
+                        reportName: 'OWASP Dependency Report'
+                    ])
+                }
+            }
+        }
+
+        // ================================================
         // Build & Push Docker Image
         // ================================================
         stage('Build & Push Docker Image') {
+            when { expression { params.ACTION == 'DEPLOY' } }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-region', variable: 'AWS_REGION'),
                     string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
                 ]) {
                     script {
-                        echo "Building and pushing Docker image to ECR..."
+                        echo " Building and pushing Docker image to ECR..."
                         sh '''
+                            echo "Logging into AWS ECR..."
                             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-                            docker build -t $ECR_REPO:${IMAGE_TAG} .
-                            docker push $ECR_REPO:${IMAGE_TAG}
-                            echo "APP_VERSION=${IMAGE_TAG}" > build_metadata.env
+
+                            echo "Building Docker image with version ${APP_VERSION}..."
+                            docker build -t $ECR_REPO:${APP_VERSION} .
+
+                            echo "Pushing image to ECR..."
+                            docker push $ECR_REPO:${APP_VERSION}
+
+                            echo "APP_VERSION=${APP_VERSION}" > build_metadata.env
                         '''
                     }
                 }
@@ -76,15 +118,19 @@ pipeline {
         // ECR Image Scan
         // ================================================
         stage('ECR Image Scan') {
+            when { expression { params.ACTION == 'DEPLOY' } }
             steps {
                 withCredentials([string(credentialsId: 'aws-region', variable: 'AWS_REGION')]) {
                     script {
                         def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                         def appVer = meta['APP_VERSION']
 
-                        echo "Starting ECR scan for ${appVer}..."
+                        echo " Starting ECR image scan for ${appVer}..."
                         sh '''
-                            aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=''' + appVer + ''' --region $AWS_REGION || true
+                            aws ecr start-image-scan \
+                                --repository-name logistics/logisticsmotuser \
+                                --image-id imageTag=''' + appVer + ''' \
+                                --region $AWS_REGION || true
                         '''
                     }
                 }
@@ -92,58 +138,48 @@ pipeline {
         }
 
         // ================================================
-        // Dependabot Scan (Optional GitHub scan simulation)
+        // Dependabot Scan (Simulated)
         // ================================================
         stage('Dependabot Scan') {
+            when { expression { params.ACTION == 'DEPLOY' } }
             steps {
-                echo "Running Dependabot scan..."
+                echo " Running Dependabot scan simulation..."
                 sh '''
-                    # Example: simulate a Dependabot check (replace with real API calls if needed)
                     echo "Fetching Dependabot alerts for repository..."
-                    # curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/OWNER/REPO/dependabot/alerts
                     echo "Dependabot scan completed (simulated)."
                 '''
             }
         }
-
-    } // end of stages
+    }
 
     // ================================================
-    //  Post Actions (Detailed Summary without code coverage)
+    // Post Actions
     // ================================================
     post {
         success {
-            script {
-                echo "========================================================="
-                echo " Build Status: SUCCESS"
-                echo "Webhook Trigger:  200 OK"
-                echo "Commit ID: ${env.GIT_COMMIT}"
-                echo "Commit Author: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>"
-                echo "Branch: ${env.BRANCH_NAME}"
-                echo "Build URL: ${env.BUILD_URL}"
-                echo "==========================================================="
-            }
+            echo """
+            =========================================================
+              Build Status: SUCCESS
+             Webhook Trigger:  200 OK
+             Commit ID: ${env.GIT_COMMIT}
+             Branch: ${env.BRANCH_NAME}
+             Build URL: ${env.BUILD_URL}
+            =========================================================
+            """
         }
 
         failure {
-            script {
-                echo "========================================================="
-                echo " Build Status: FAILED"
-                echo "Webhook Trigger:  200 OK"
-                echo "Commit ID: ${env.GIT_COMMIT}"
-                echo "Commit Author: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>"
-                echo "Branch: ${env.BRANCH_NAME}"
-                echo "----------------------------------------------------------"
-                echo " Error Description (last 30 lines of Maven log):"
-                sh "test -f ${MAVEN_LOG} && tail -n 30 ${MAVEN_LOG} || echo 'No Maven log found.'"
-                echo "----------------------------------------------------------"
-                echo " Build Log URL: ${env.BUILD_URL}"
-                echo "==========================================================="
-            }
+            echo """
+            =========================================================
+              Build Status: FAILED
+             Webhook Trigger: 200 OK
+             Branch: ${env.BRANCH_NAME}
+             =========================================================
+            """
         }
 
         always {
-            echo "Build completed at: ${new Date()}"
+            echo "🕓 Build completed at: ${new Date()}"
         }
     }
 }
