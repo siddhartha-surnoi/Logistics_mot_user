@@ -9,48 +9,11 @@ pipeline {
     stages {
 
         // ================================================
-        // Webhook Info
-        // ================================================
-        stage('Webhook Info') {
-            steps {
-                script {
-                    echo "========================================"
-                    echo " Checking Build Trigger Source"
-
-                    def gitUrl = env.GIT_URL ?: sh(script: "git config --get remote.origin.url", returnStdout: true).trim()
-                    def webhookTriggered = gitUrl.contains("github.com")
-
-                    if (webhookTriggered) {
-                        echo " Build triggered by GitHub Webhook (HTTP 200 OK received)"
-                    } else {
-                        echo " Build triggered manually or by another source"
-                    }
-
-                    def commitAuthor  = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
-                    def commitEmail   = sh(script: "git log -1 --pretty=format:'%ae'", returnStdout: true).trim()
-                    def commitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
-                    def commitDate    = sh(script: "git log -1 --pretty=format:'%ci'", returnStdout: true).trim()
-
-                    echo "========================================"
-                    echo "📡 Webhook Delivery Validation"
-                    echo "Status: 200 OK "
-                    echo "Triggered at: ${new Date()}"
-                    echo "Branch: ${env.BRANCH_NAME}"
-                    echo "Commit ID: ${env.GIT_COMMIT}"
-                    echo "Commit Author: ${commitAuthor} <${commitEmail}>"
-                    echo "Commit Date: ${commitDate}"
-                    echo "Commit Message: ${commitMessage}"
-                    echo "========================================"
-                }
-            }
-        }
-
-        // ================================================
         // Build
         // ================================================
         stage('Build') {
             steps {
-                echo " Building Java project for branch: ${env.BRANCH_NAME}"
+                echo "Building Java project for branch: ${env.BRANCH_NAME}"
                 sh '''
                     mkdir -p target
                     chmod +x mvnw || true
@@ -88,41 +51,6 @@ pipeline {
         }
 
         // ================================================
-        // Docker Permissions Check
-        // ================================================
-      stage('Docker Permission Check') {
-    steps {
-        script {
-            echo "Granting Docker permissions to Jenkins user (if possible)..."
-            sh '''
-                # Get the current user running the pipeline
-                JENKINS_USER=$(whoami)
-
-                # Check if docker group exists
-                if ! getent group docker > /dev/null 2>&1; then
-                    sudo groupadd docker
-                    echo "Docker group created."
-                else
-                    echo "Docker group already exists."
-                fi
-
-                # Try adding current user to docker group
-                if id -u $JENKINS_USER > /dev/null 2>&1; then
-                    sudo usermod -aG docker $JENKINS_USER || true
-                    echo "$JENKINS_USER added to docker group (or already a member)."
-                else
-                    echo "Warning: user $JENKINS_USER does not exist. Skipping docker group add."
-                fi
-
-                # Optional: test docker access (won’t fail build)
-                docker ps || echo "Warning: docker access may require restart or different user."
-            '''
-        }
-    }
-}
-
-
-        // ================================================
         // Build & Push Docker Image
         // ================================================
         stage('Build & Push Docker Image') {
@@ -132,7 +60,7 @@ pipeline {
                     string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
                 ]) {
                     script {
-                        echo " Building and pushing Docker image to ECR..."
+                        echo "Building and pushing Docker image to ECR..."
                         sh '''
                             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
                             docker build -t $ECR_REPO:${IMAGE_TAG} .
@@ -154,7 +82,7 @@ pipeline {
                         def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                         def appVer = meta['APP_VERSION']
 
-                        echo " Starting ECR scan for ${appVer}..."
+                        echo "Starting ECR scan for ${appVer}..."
                         sh '''
                             aws ecr start-image-scan --repository-name logistics/logisticsmotuser --image-id imageTag=''' + appVer + ''' --region $AWS_REGION || true
                         '''
@@ -163,39 +91,35 @@ pipeline {
             }
         }
 
+        // ================================================
+        // Dependabot Scan (Optional GitHub scan simulation)
+        // ================================================
+        stage('Dependabot Scan') {
+            steps {
+                echo "Running Dependabot scan..."
+                sh '''
+                    # Example: simulate a Dependabot check (replace with real API calls if needed)
+                    echo "Fetching Dependabot alerts for repository..."
+                    # curl -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/OWNER/REPO/dependabot/alerts
+                    echo "Dependabot scan completed (simulated)."
+                '''
+            }
+        }
+
     } // end of stages
-    
 
     // ================================================
-    //  Post Actions (Detailed Summary)
+    //  Post Actions (Detailed Summary without code coverage)
     // ================================================
     post {
         success {
             script {
-                def commitAuthor = sh(
-                    script: "git log -1 --pretty=format:'%an <%ae>'",
-                    returnStdout: true
-                ).trim()
-
-                def coveragePercent = sh(
-                    script: """
-                        if [ -f target/site/jacoco/jacoco.xml ]; then
-                            grep -oPm1 '(?<=<counter type="INSTRUCTION" missed=")[0-9]+" covered="[0-9]+"' target/site/jacoco/jacoco.xml | \
-                            awk -F'"' '{missed=\$1; covered=\$3; total=missed+covered; printf("%.2f", (covered/total)*100)}'
-                        else
-                            echo 'N/A'
-                        fi
-                    """,
-                    returnStdout: true
-                ).trim()
-
                 echo "========================================================="
                 echo " Build Status: SUCCESS"
                 echo "Webhook Trigger:  200 OK"
                 echo "Commit ID: ${env.GIT_COMMIT}"
-                echo "Commit Author: ${commitAuthor}"
+                echo "Commit Author: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>"
                 echo "Branch: ${env.BRANCH_NAME}"
-                echo "Code Coverage: ${coveragePercent}%"
                 echo "Build URL: ${env.BUILD_URL}"
                 echo "==========================================================="
             }
@@ -203,16 +127,11 @@ pipeline {
 
         failure {
             script {
-                def commitAuthor = sh(
-                    script: "git log -1 --pretty=format:'%an <%ae>'",
-                    returnStdout: true
-                ).trim()
-
                 echo "========================================================="
                 echo " Build Status: FAILED"
                 echo "Webhook Trigger:  200 OK"
                 echo "Commit ID: ${env.GIT_COMMIT}"
-                echo "Commit Author: ${commitAuthor}"
+                echo "Commit Author: ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}>"
                 echo "Branch: ${env.BRANCH_NAME}"
                 echo "----------------------------------------------------------"
                 echo " Error Description (last 30 lines of Maven log):"
@@ -224,7 +143,7 @@ pipeline {
         }
 
         always {
-            echo " Build completed at: ${new Date()}"
+            echo "Build completed at: ${new Date()}"
         }
     }
 }
