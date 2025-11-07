@@ -30,26 +30,27 @@ pipeline {
         // ================================================
         // SonarQube Scan
         // ================================================
-        stage('SonarQube Scan') {
-            when {
-                anyOf {
-                    expression { params.ACTION in ['SCAN_SONARQUBE', 'SCAN_BOTH', 'DEPLOY'] }
-                    expression { env.BRANCH_NAME.startsWith('feature_') }
-                }
-            }
-            environment { scannerHome = tool 'sonar-7.2' }
-            steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    withSonarQubeEnv('SonarQube-Server') {
-                        sh '''
-                            echo "🔍 Running SonarQube analysis..."
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.token=$SONAR_TOKEN
-                        '''
-                    }
-                }
+     stage('SonarQube Scan') {
+    when {
+        anyOf {
+            expression { env.BRANCH_NAME.startsWith('feature_') }
+            expression { env.BRANCH_NAME == 'master' }
+        }
+    }
+    environment { scannerHome = tool 'sonar-7.2' }
+    steps {
+        echo "🔍 Running SonarQube analysis..."
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            withSonarQubeEnv('SonarQube-Server') {
+                sh '''
+                    ${scannerHome}/bin/sonar-scanner \
+                      -Dsonar.login=$SONAR_TOKEN
+                '''
             }
         }
+    }
+}
+
 
         // ================================================
         // Quality Gate
