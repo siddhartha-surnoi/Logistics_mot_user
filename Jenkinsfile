@@ -13,7 +13,7 @@ pipeline {
         // ================================================
         stage('Build') {
             steps {
-                echo "🏗️ Building Java project for branch: ${env.BRANCH_NAME}"
+                echo " Building Java project for branch: ${env.BRANCH_NAME}"
                 sh 'mvn clean package -DskipTests'
             }
         }
@@ -36,7 +36,7 @@ pipeline {
                 stage('SonarQube Scan') {
                     environment { scannerHome = tool 'sonar-7.2' }
                     steps {
-                        echo "🔍 Running SonarQube analysis..."
+                        echo " Running SonarQube analysis..."
                         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                             withSonarQubeEnv('SonarQube-Server') {
                                 sh '''
@@ -53,7 +53,7 @@ pipeline {
                 // ----------------------------
                 stage('Security Scan (OWASP)') {
                     steps {
-                        echo "🔒 Running OWASP Dependency Check..."
+                        echo " Running OWASP Dependency Check..."
                         sh '''
                             mvn org.owasp:dependency-check-maven:check \
                                 -Dformat=ALL \
@@ -63,7 +63,7 @@ pipeline {
                     }
                     post {
                         always {
-                            echo "📊 Archiving and publishing OWASP dependency reports..."
+                            echo " Archiving and publishing OWASP dependency reports..."
                             archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
                             dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
                         }
@@ -75,7 +75,7 @@ pipeline {
                 // ----------------------------
                 stage('Dependabot Scan') {
                     steps {
-                        echo "🐙 Running Dependabot scan simulation..."
+                        echo " Running Dependabot scan simulation..."
                         sh '''
                             echo "Fetching Dependabot alerts for repository..."
                             echo "Dependabot scan completed (simulated)."
@@ -113,7 +113,7 @@ pipeline {
                     string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
                 ]) {
                     script {
-                        echo "📦 Building and pushing Docker image to ECR..."
+                        echo " Building and pushing Docker image to ECR..."
                         sh '''
                             echo "Logging into AWS ECR..."
                             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
@@ -158,29 +158,98 @@ pipeline {
     // ================================================
     // Post Actions
     // ================================================
+    // post {
+    //     success {
+    //         echo """
+    //         =========================================================
+    //           Build Status: SUCCESS
+    //          Commit ID: ${env.GIT_COMMIT}
+    //          Branch: ${env.BRANCH_NAME}
+    //          Build URL: ${env.BUILD_URL}
+    //         =========================================================
+    //         """
+    //     }
+
+    //     failure {
+    //         echo """
+    //         =========================================================
+    //           Build Status: FAILED
+    //          Branch: ${env.BRANCH_NAME}
+    //         =========================================================
+    //         """
+    //     }
+
+    //     always {
+    //         echo " Build completed at: ${new Date()}"
+    //     }
+    // }
+
     post {
-        success {
-            echo """
-            =========================================================
-             ✅ Build Status: SUCCESS
-             Commit ID: ${env.GIT_COMMIT}
-             Branch: ${env.BRANCH_NAME}
-             Build URL: ${env.BUILD_URL}
-            =========================================================
-            """
-        }
-
-        failure {
-            echo """
-            =========================================================
-             ❌ Build Status: FAILED
-             Branch: ${env.BRANCH_NAME}
-            =========================================================
-            """
-        }
-
-        always {
-            echo "🕓 Build completed at: ${new Date()}"
-        }
+    success {
+        echo """
+        =========================================================
+         ✅ Build Status: SUCCESS
+         Commit ID: ${env.GIT_COMMIT}
+         Branch: ${env.BRANCH_NAME}
+         Build URL: ${env.BUILD_URL}
+        =========================================================
+        """
+        office365ConnectorSend(
+            message: "✅ *Build SUCCESS* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
+            color: '#00FF00',
+            status: 'Success',
+            webhookUrl: credentials('teams-webhook')
+        )
     }
+
+    failure {
+        echo """
+        =========================================================
+         ❌ Build Status: FAILED
+         Branch: ${env.BRANCH_NAME}
+        =========================================================
+        """
+        office365ConnectorSend(
+            message: "❌ *Build FAILED* for branch `${env.BRANCH_NAME}`\n🔗 [View Build](${env.BUILD_URL})",
+            color: '#FF0000',
+            status: 'Failure',
+            webhookUrl: credentials('teams-webhook')
+        )
+    }
+
+    unstable {
+        echo """
+        =========================================================
+          Build Status: UNSTABLE
+         Branch: ${env.BRANCH_NAME}
+        =========================================================
+        """
+        office365ConnectorSend(
+            message: " *Build UNSTABLE* for branch `${env.BRANCH_NAME}`\n [View Build](${env.BUILD_URL})",
+            color: '#FFA500',
+            status: 'Unstable',
+            webhookUrl: credentials('teams-webhook')
+        )
+    }
+
+    aborted {
+        echo """
+        =========================================================
+          Build Status: ABORTED
+         Branch: ${env.BRANCH_NAME}
+        =========================================================
+        """
+        office365ConnectorSend(
+            message: " *Build ABORTED* for branch `${env.BRANCH_NAME}`\n [View Build](${env.BUILD_URL})",
+            color: '#808080',
+            status: 'Aborted',
+            webhookUrl: credentials('teams-webhook')
+        )
+    }
+
+    always {
+        echo " Build completed at: ${new Date()}"
+    }
+}
+
 }
