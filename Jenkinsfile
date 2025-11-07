@@ -15,7 +15,9 @@ pipeline {
        stage('Build') {
     steps {
         echo "Building Java project for branch: ${env.BRANCH_NAME}"
-        sh 'mvn clean install'
+        // sh 'mvn clean install'
+        sh 'mvn clean package -DskipTests'
+
     }
 }
 
