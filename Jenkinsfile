@@ -8,6 +8,7 @@ pipeline {
             description: 'Choose the pipeline action to perform'
         )
     }
+    
 
     environment {
         // Extract version from pom.xml dynamically for Docker tagging
