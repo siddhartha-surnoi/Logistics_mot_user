@@ -10,7 +10,6 @@ pipeline {
     }
 
     environment {
-        // Extract version from pom.xml dynamically for Docker tagging
         APP_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
         IS_FEATURE_BRANCH = "${env.BRANCH_NAME}".startsWith("feature_")
     }
@@ -70,7 +69,7 @@ pipeline {
         }
 
         // ================================================
-        // OWASP Security Scan
+        // OWASP Security Scan (Updated)
         // ================================================
         stage('Security Scan (OWASP)') {
             when {
@@ -80,7 +79,7 @@ pipeline {
                 }
             }
             steps {
-                echo "🔒 Running OWASP Dependency Check..."
+                echo " Running OWASP Dependency Check..."
                 sh '''
                     mvn org.owasp:dependency-check-maven:check \
                         -Dformat=ALL \
@@ -90,13 +89,9 @@ pipeline {
             }
             post {
                 always {
-                    echo "📊 Archiving OWASP dependency reports..."
+                    echo " Archiving and publishing OWASP dependency reports..."
                     archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-                    publishHTML(target: [
-                        reportDir: 'target',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'OWASP Dependency Report'
-                    ])
+                    dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
                 }
             }
         }
@@ -112,7 +107,7 @@ pipeline {
                 }
             }
             steps {
-                echo "🐙 Running Dependabot scan simulation..."
+                echo " Running Dependabot scan simulation..."
                 sh '''
                     echo "Fetching Dependabot alerts for repository..."
                     echo "Dependabot scan completed (simulated)."
@@ -136,7 +131,7 @@ pipeline {
                     string(credentialsId: 'ecr-repo', variable: 'ECR_REPO')
                 ]) {
                     script {
-                        echo "📦 Building and pushing Docker image to ECR..."
+                        echo " Building and pushing Docker image to ECR..."
                         sh '''
                             echo "Logging into AWS ECR..."
                             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
@@ -170,7 +165,7 @@ pipeline {
                         def meta = readFile('build_metadata.env').split("\n").collectEntries { it.split('=').with { [it[0], it[1]] } }
                         def appVer = meta['APP_VERSION']
 
-                        echo "🔎 Starting ECR image scan for ${appVer}..."
+                        echo " Starting ECR image scan for ${appVer}..."
                         sh '''
                             aws ecr start-image-scan \
                                 --repository-name logistics/logisticsmotuser \
@@ -190,7 +185,7 @@ pipeline {
         success {
             echo """
             =========================================================
-             ✅ Build Status: SUCCESS
+              Build Status: SUCCESS
              Webhook Trigger: 200 OK
              Commit ID: ${env.GIT_COMMIT}
              Branch: ${env.BRANCH_NAME}
@@ -202,7 +197,7 @@ pipeline {
         failure {
             echo """
             =========================================================
-             ❌ Build Status: FAILED
+              Build Status: FAILED
              Webhook Trigger: 200 OK
              Branch: ${env.BRANCH_NAME}
              =========================================================
@@ -210,7 +205,7 @@ pipeline {
         }
 
         always {
-            echo "🕓 Build completed at: ${new Date()}"
+            echo " Build completed at: ${new Date()}"
         }
     }
 }
