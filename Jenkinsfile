@@ -1,4 +1,4 @@
-@Library('jenkins-shared-libraries') _
+@Library('jenkins-shared-library-aiml') _
 
 def config = [
     project   : "logistics",
