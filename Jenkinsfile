@@ -2,7 +2,7 @@ pipeline {
     agent { label 'java-agent-1' }
 
     environment {
-        // Extract version dynamically from pom.xml for Docker tagging
+        // Dynamically extract version from pom.xml for Docker tagging
         APP_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
     }
 
@@ -19,23 +19,66 @@ pipeline {
         }
 
         // ================================================
-        // SonarQube Scan
+        // Static & Security Scans (Parallel)
         // ================================================
-        stage('SonarQube Scan') {
+        stage('Code & Security Scans') {
             when {
                 anyOf {
                     expression { env.BRANCH_NAME.startsWith('feature_') }
                     expression { env.BRANCH_NAME == 'master' }
                 }
             }
-            environment { scannerHome = tool 'sonar-7.2' }
-            steps {
-                echo "🔍 Running SonarQube analysis..."
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    withSonarQubeEnv('SonarQube-Server') {
+            parallel {
+                
+                // ----------------------------
+                // SonarQube Scan
+                // ----------------------------
+                stage('SonarQube Scan') {
+                    environment { scannerHome = tool 'sonar-7.2' }
+                    steps {
+                        echo "🔍 Running SonarQube analysis..."
+                        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                            withSonarQubeEnv('SonarQube-Server') {
+                                sh '''
+                                    ${scannerHome}/bin/sonar-scanner \
+                                      -Dsonar.login=$SONAR_TOKEN
+                                '''
+                            }
+                        }
+                    }
+                }
+
+                // ----------------------------
+                // OWASP Dependency Check
+                // ----------------------------
+                stage('Security Scan (OWASP)') {
+                    steps {
+                        echo "🔒 Running OWASP Dependency Check..."
                         sh '''
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.login=$SONAR_TOKEN
+                            mvn org.owasp:dependency-check-maven:check \
+                                -Dformat=ALL \
+                                -DoutputDirectory=target \
+                                -B || true
+                        '''
+                    }
+                    post {
+                        always {
+                            echo "📊 Archiving and publishing OWASP dependency reports..."
+                            archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
+                            dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
+                        }
+                    }
+                }
+
+                // ----------------------------
+                // Dependabot (Simulated)
+                // ----------------------------
+                stage('Dependabot Scan') {
+                    steps {
+                        echo "🐙 Running Dependabot scan simulation..."
+                        sh '''
+                            echo "Fetching Dependabot alerts for repository..."
+                            echo "Dependabot scan completed (simulated)."
                         '''
                     }
                 }
@@ -43,7 +86,7 @@ pipeline {
         }
 
         // ================================================
-        // Quality Gate
+        // Quality Gate (runs after SonarQube)
         // ================================================
         stage('Quality Gate') {
             when {
@@ -60,61 +103,10 @@ pipeline {
         }
 
         // ================================================
-        // OWASP Security Scan
-        // ================================================
-        stage('Security Scan (OWASP)') {
-            when {
-                anyOf {
-                    expression { env.BRANCH_NAME.startsWith('feature_') }
-                    expression { env.BRANCH_NAME == 'master' }
-                }
-            }
-            steps {
-                echo "🔒 Running OWASP Dependency Check..."
-                sh '''
-                    mvn org.owasp:dependency-check-maven:check \
-                        -Dformat=ALL \
-                        -DoutputDirectory=target \
-                        -B || true
-                '''
-            }
-            post {
-                always {
-                    echo "📊 Archiving and publishing OWASP dependency reports..."
-                    archiveArtifacts artifacts: 'target/dependency-check-report.*', allowEmptyArchive: true
-                    dependencyCheckPublisher pattern: 'target/dependency-check-report.xml'
-                }
-            }
-        }
-
-        // ================================================
-        // Dependabot Scan (Simulated)
-        // ================================================
-        stage('Dependabot Scan') {
-            when {
-                anyOf {
-                    expression { env.BRANCH_NAME.startsWith('feature_') }
-                    expression { env.BRANCH_NAME == 'master' }
-                }
-            }
-            steps {
-                echo "🐙 Running Dependabot scan simulation..."
-                sh '''
-                    echo "Fetching Dependabot alerts for repository..."
-                    echo "Dependabot scan completed (simulated)."
-                '''
-            }
-        }
-
-        // ================================================
-        // Build & Push Docker Image
+        // Build & Push Docker Image (only for master)
         // ================================================
         stage('Build & Push Docker Image') {
-            when {
-                allOf {
-                    expression { env.BRANCH_NAME == 'master' }
-                }
-            }
+            when { expression { env.BRANCH_NAME == 'master' } }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-region', variable: 'AWS_REGION'),
@@ -140,12 +132,10 @@ pipeline {
         }
 
         // ================================================
-        // ECR Image Scan
+        // ECR Image Scan (only for master)
         // ================================================
         stage('ECR Image Scan') {
-            when {
-                expression { env.BRANCH_NAME == 'master' }
-            }
+            when { expression { env.BRANCH_NAME == 'master' } }
             steps {
                 withCredentials([string(credentialsId: 'aws-region', variable: 'AWS_REGION')]) {
                     script {
