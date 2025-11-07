@@ -12,16 +12,13 @@ pipeline {
         // Build 
         // ================================================
         
-        stage('Build') {
-            steps {
-                echo "Building Java project for branch: ${env.BRANCH_NAME}"
-                sh '''
-                    mkdir -p target
-                    chmod +x mvnw || true
-                    ./mvnw clean compile -Pdeveloper > ${MAVEN_LOG} 2>&1
-                '''
-            }
-        }
+       stage('Build') {
+    steps {
+        echo "Building Java project for branch: ${env.BRANCH_NAME}"
+        sh 'mvn clean install'
+    }
+}
+
 
         // ================================================
         // SonarQube Scan
