@@ -13,7 +13,6 @@ pipeline {
         APP_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
         IS_FEATURE_BRANCH = "${env.BRANCH_NAME}".startsWith("feature_")
     }
-
     stages {
 
         // ================================================
