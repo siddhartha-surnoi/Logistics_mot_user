@@ -1,4 +1,5 @@
 @Library('jenkins-shared-library-aiml') _
+
 def config = [
     project   : "logistics",
     component : "backend_user",
