@@ -2,7 +2,6 @@ pipeline {
     agent { label 'java-agent-1' }
 
     stages {
-
         
         // ================================================
         // Checkout
